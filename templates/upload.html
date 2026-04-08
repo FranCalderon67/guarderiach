@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presentá tu documentación</title>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+ <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream:   #f5f0e8;
+      --paper:   #faf8f4;
+      --ink:     #1a1714;
+      --ink2:    #4a4540;
+      --accent:  #c84b2f;
+      --border:  #ddd8ce;
+      --green:   #2d6a4f;
+    }
+
+    body {
+      background: var(--cream);
+      color: var(--ink);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 16px;
+    }
+
+    .wrapper {
+      width: 100%;
+      max-width: 560px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+    header .logo {
+      font-size: 11px;
+      letter-spacing: .25em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 16px;
+      font-weight: 600;
+    }
+    header h1 {
+      font-family: 'DM Serif Display', serif;
+      font-size: 38px;
+      line-height: 1.1;
+      color: var(--ink);
+      margin-bottom: 10px;
+    }
+    header p {
+      font-size: 14px;
+      color: var(--ink2);
+      line-height: 1.6;
+    }
+
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 4px 24px rgba(0,0,0,.06);
+    }
+
+    .field {
+      padding: 24px 28px;
+      border-bottom: 1px solid var(--border);
+    }
+    .field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--ink2);
+      margin-bottom: 10px;
+    }
+    .field input[type="text"] {
+      width: 100%;
+      background: var(--cream);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 15px;
+      color: var(--ink);
+      outline: none;
+      transition: border-color .2s;
+    }
+    .field input[type="text"]:focus {
+      border-color: var(--accent);
+    }
+
+    .dropzone {
+      margin: 0;
+      padding: 36px 28px;
+      border-bottom: 1px solid var(--border);
+      border: 2px dashed var(--border);
+      border-radius: 0;
+      text-align: center;
+      cursor: pointer;
+      transition: all .2s;
+      background: var(--paper);
+    }
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--accent);
+      background: #fdf5f3;
+    }
+    .dropzone .dz-icon { font-size: 36px; margin-bottom: 12px; }
+    .dropzone p { font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+    .dropzone small { font-size: 12px; color: var(--ink2); }
+    #file-input { display: none; }
+
+    .file-list {
+      padding: 0 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .file-list:not(:empty) { padding: 16px 28px; border-bottom: 1px solid var(--border); }
+    .file-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--cream);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 14px;
+      font-size: 13px;
+    }
+    .file-item .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-item .fsize { font-size: 11px; color: var(--ink2); flex-shrink: 0; }
+    .file-item .frem  { background: none; border: none; cursor: pointer; color: var(--ink2); font-size: 14px; transition: color .2s; }
+    .file-item .frem:hover { color: var(--accent); }
+
+    .actions { padding: 24px 28px; }
+
+    .alert {
+      border-radius: 10px;
+      padding: 12px 16px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .alert-error   { background: #fde8e4; border: 1px solid #f5bdb4; color: #8b2315; }
+    .alert-success { background: #e4f5ec; border: 1px solid #a8d5bc; color: var(--green); }
+
+    .btn {
+      width: 100%;
+      padding: 14px;
+      border-radius: 10px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      transition: all .2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn:hover { background: #a83a20; }
+    .btn:disabled { background: var(--border); color: var(--ink2); cursor: not-allowed; }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .success-state {
+      text-align: center;
+      padding: 48px 28px;
+      display: none;
+    }
+    .success-state .check { font-size: 48px; margin-bottom: 16px; }
+    .success-state h2 { font-family: 'DM Serif Display', serif; font-size: 26px; margin-bottom: 8px; }
+    .success-state p  { font-size: 14px; color: var(--ink2); margin-bottom: 24px; }
+    .btn-outline {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--ink);
+      width: auto;
+      padding: 10px 24px;
+      border-radius: 10px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
+ 
+ </style>
+  
+</head>
+<body>
+<div class="wrapper">
+
+  <header>
+    <div class="logo">Gestión Documental</div>
+    <h1>Presentá tu documentación</h1>
+    <p>Subí tus comprobantes del mes de forma simple y segura.</p>
+  </header>
+
+  <div class="card" id="form-card">
+
+ <div class="field">
+      <label>Tu nombre completo</label>
+      <input type="text" id="nombre-input" placeholder="Ej: Juan García" oninput="actualizarBtn()">
+    </div>
+    <div class="field">
+      <label>Tu DNI</label>
+      <input type="text" id="dni-input" placeholder="Ej: 30123456" oninput="actualizarBtn()">
+    </div>
+
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
+      <div class="dz-icon">📄</div>
+      <p>Arrastrá tus PDFs aquí</p>
+      <small>o hacé clic para seleccionar · podés subir varios a la vez</small>
+    </div>
+    <input type="file" id="file-input" multiple accept="application/pdf">
+
+    <div class="file-list" id="file-list"></div>
+
+    <div class="actions">
+      <div class="alert alert-error"   id="alert-error"></div>
+      <div class="alert alert-success" id="alert-success"></div>
+      <button class="btn" id="btn-subir" onclick="subir()" disabled>
+        Enviar documentos
+      </button>
+    </div>
+
+  </div>
+
+  <div class="card success-state" id="success-card">
+    <div class="check">✅</div>
+    <h2>¡Documentos enviados!</h2>
+    <p id="success-msg">Tus archivos fueron recibidos correctamente.</p>
+    <button class="btn-outline" onclick="reiniciar()">Subir más archivos</button>
+  </div>
+
+</div>
+<script>
+let archivos = [];
+
+  const dropzone  = document.getElementById('dropzone');
+  const fileInput = document.getElementById('file-input');
+
+  dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+  dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('dragover'); agregarArchivos(e.dataTransfer.files); });
+  fileInput.addEventListener('change', e => agregarArchivos(e.target.files));
+  document.getElementById('nombre-input').addEventListener('input', actualizarBtn);
+
+  function agregarArchivos(files) {
+    for (const f of files) {
+      if (f.type !== 'application/pdf') continue;
+      if (archivos.find(a => a.name === f.name)) continue;
+      archivos.push(f);
+    }
+    renderFileList();
+    actualizarBtn();
+  }
+
+  function renderFileList() {
+    const list = document.getElementById('file-list');
+    list.innerHTML = archivos.map((f, i) => `
+      <div class="file-item">
+        <span>📄</span>
+        <span class="fname">${f.name}</span>
+        <span class="fsize">${(f.size/1024).toFixed(0)} KB</span>
+        <button class="frem" onclick="eliminar(${i})">✕</button>
+      </div>
+    `).join('');
+  }
+
+  function eliminar(i) { archivos.splice(i, 1); renderFileList(); actualizarBtn(); }
+
+ function actualizarBtn() {
+    const nombre = document.getElementById('nombre-input').value.trim();
+    const dni    = document.getElementById('dni-input').value.trim();
+    document.getElementById('btn-subir').disabled = !nombre || !dni || archivos.length === 0;
+  }
+
+  async function subir() {
+    const nombre = document.getElementById('nombre-input').value.trim();
+    const dni    = document.getElementById('dni-input').value.trim();
+    if (!dni) throw new Error('Ingresá tu DNI.');
+    const btn    = document.getElementById('btn-subir');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Enviando…';
+    ocultarAlertas();
+
+    try {
+      const form = new FormData();
+      form.append('nombre', nombre);
+      form.append('dni', dni);
+      archivos.forEach(f => form.append('pdfs', f));
+
+      const res  = await fetch('/api/upload', { method: 'POST', body: form });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Error al enviar.');
+
+      const msg = `Se enviaron ${data.subidos.length} archivo(s) correctamente.` +
+        (data.errores?.length ? ` (${data.errores.length} con error)` : '');
+
+      document.getElementById('success-msg').textContent = msg;
+      document.getElementById('form-card').style.display    = 'none';
+      document.getElementById('success-card').style.display = 'block';
+
+    } catch (err) {
+      mostrarError(err.message);
+      btn.disabled  = false;
+      btn.innerHTML = 'Enviar documentos';
+    }
+  }
+
+  function reiniciar() {
+    archivos = [];
+    document.getElementById('nombre-input').value = '';
+    document.getElementById('file-list').innerHTML = '';
+    document.getElementById('form-card').style.display    = 'block';
+    document.getElementById('success-card').style.display = 'none';
+    actualizarBtn();
+  }
+
+  function mostrarError(msg) {
+    const el = document.getElementById('alert-error');
+    el.textContent = '⚠ ' + msg;
+    el.style.display = 'block';
+  }
+  function ocultarAlertas() {
+    document.getElementById('alert-error').style.display   = 'none';
+    document.getElementById('alert-success').style.display = 'none';
+  }
+
+</script>
+</body>
+</html>

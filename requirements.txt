@@ -1,0 +1,6 @@
+flask
+flask-cors
+pdfplumber
+azure-storage-blob
+python-dotenv
+gunicorn
