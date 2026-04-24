@@ -1,6 +1,9 @@
 flask
 flask-cors
+flask-session
 pdfplumber
 azure-storage-blob
 python-dotenv
 gunicorn
+requests
+msal

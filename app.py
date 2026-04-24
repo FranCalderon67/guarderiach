@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, redirect, url_for, session
 from flask_cors import CORS
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from dotenv import load_dotenv
@@ -8,22 +8,85 @@ import re
 import io
 import os
 import json
+import uuid
 from datetime import datetime, timezone
+from functools import wraps
 
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
+app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE']   = False  # True en producción con HTTPS
+app.config['SESSION_COOKIE_HTTPONLY'] = True
 CORS(app)
 
+# ── Config ────────────────────────────────────────────────────────────────────
 AZURE_CONNECTION_STRING = os.getenv('AZURE_CONNECTION_STRING', '')
 AZURE_CONTAINER_NAME    = os.getenv('AZURE_CONTAINER_NAME', 'documentos')
-ADMIN_PASSWORD          = os.getenv('ADMIN_PASSWORD', 'admin123')
 UPLOADS_LOCAL           = os.path.join(os.path.dirname(__file__), 'uploads')
 
-SAP_TOKEN_URL  = os.getenv('SAP_TOKEN_URL',  '')
-SAP_CLIENT_ID  = os.getenv('SAP_CLIENT_ID',  '')
+SAP_TOKEN_URL     = os.getenv('SAP_TOKEN_URL', 'https://distrocuyo-data.authentication.us10.hana.ondemand.com/oauth/token')
+SAP_CLIENT_ID     = os.getenv('SAP_CLIENT_ID', '')
 SAP_CLIENT_SECRET = os.getenv('SAP_CLIENT_SECRET', '')
-SAP_API_URL    = 'https://distrocuyo-data.us10.hcs.cloud.sap/api/v1/datasphere/consumption/relational/HCM/DNI_personal/DNI_personal'
+SAP_API_URL       = 'https://distrocuyo-data.us10.hcs.cloud.sap/api/v1/datasphere/consumption/relational/HCM/DNI_personal/DNI_personal'
+
+ENTRA_TENANT_ID      = os.getenv('ENTRA_TENANT_ID', '')
+ENTRA_CLIENT_ID      = os.getenv('ENTRA_CLIENT_ID', '')
+ENTRA_CLIENT_SECRET  = os.getenv('ENTRA_CLIENT_SECRET', '')
+ENTRA_REDIRECT_URI   = os.getenv('ENTRA_REDIRECT_URI', 'http://localhost:8000/auth/callback')
+ENTRA_ADMIN_GROUP_ID = os.getenv('ENTRA_ADMIN_GROUP_ID', '')
+
+ENTRA_AUTHORITY     = f'https://login.microsoftonline.com/{ENTRA_TENANT_ID}'
+ENTRA_SCOPES        = ['User.Read', 'GroupMember.Read.All']
+
+def entra_configurado():
+    return all([ENTRA_TENANT_ID, ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET])
+
+# ── Auth helpers ──────────────────────────────────────────────────────────────
+def get_msal_app():
+    import msal
+    return msal.ConfidentialClientApplication(
+        ENTRA_CLIENT_ID,
+        authority=ENTRA_AUTHORITY,
+        client_credential=ENTRA_CLIENT_SECRET
+    )
+
+def get_user_groups(access_token):
+    res = http_requests.get(
+        'https://graph.microsoft.com/v1.0/me/memberOf',
+        headers={'Authorization': f'Bearer {access_token}'},
+        timeout=10
+    )
+    if res.status_code != 200:
+        return []
+    data = res.json()
+    return [g.get('id', '') for g in data.get('value', [])]
+
+def is_admin_user():
+    if not session.get('user'):
+        return False
+    if not ENTRA_ADMIN_GROUP_ID:
+        return session['user'].get('role') == 'admin'
+    return ENTRA_ADMIN_GROUP_ID in session.get('groups', [])
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('user'):
+            return redirect(url_for('login_page'))
+        return f(*args, **kwargs)
+    return decorated
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('user'):
+            return redirect(url_for('login_page'))
+        if not is_admin_user():
+            return redirect(url_for('upload_page'))
+        return f(*args, **kwargs)
+    return decorated
 
 # ── SAP OAuth2 ────────────────────────────────────────────────────────────────
 _sap_token_cache = {'token': None, 'expires_at': 0}
@@ -33,17 +96,11 @@ def get_sap_token():
     now = time.time()
     if _sap_token_cache['token'] and now < _sap_token_cache['expires_at'] - 60:
         return _sap_token_cache['token']
-
     if not SAP_CLIENT_ID or not SAP_CLIENT_SECRET:
-        raise Exception('SAP no configurado. Completá SAP_CLIENT_ID y SAP_CLIENT_SECRET en el .env')
-
+        raise Exception('SAP no configurado.')
     res = http_requests.post(
         SAP_TOKEN_URL,
-        data={
-            'grant_type':    'client_credentials',
-            'client_id':     SAP_CLIENT_ID,
-            'client_secret': SAP_CLIENT_SECRET,
-        },
+        data={'grant_type': 'client_credentials', 'client_id': SAP_CLIENT_ID, 'client_secret': SAP_CLIENT_SECRET},
         headers={'Content-Type': 'application/x-www-form-urlencoded'},
         timeout=10
     )
@@ -56,11 +113,7 @@ def get_sap_token():
 def buscar_legajo_por_dni(dni):
     token = get_sap_token()
     url   = f"{SAP_API_URL}?$filter=DNI eq '{dni}'&$top=1"
-    res   = http_requests.get(
-        url,
-        headers={'Authorization': f'Bearer {token}'},
-        timeout=10
-    )
+    res   = http_requests.get(url, headers={'Authorization': f'Bearer {token}'}, timeout=10)
     res.raise_for_status()
     data  = res.json()
     value = data.get('value', [])
@@ -69,23 +122,7 @@ def buscar_legajo_por_dni(dni):
     legajo = value[0].get('Numero_de_personal', '')
     return str(int(legajo)) if legajo.isdigit() else legajo
 
-    token = get_sap_token()
-    res   = http_requests.get(
-        SAP_API_URL,
-        headers={'Authorization': f'Bearer {token}'},
-        params={'$filter': f"DNI eq '{dni}'", '$top': '1'},
-        timeout=10
-    )
-    res.raise_for_status()
-    data  = res.json()
-    value = data.get('value', [])
-    if not value:
-        return None
-    # Numero_de_personal viene como "00000007" — sacamos los ceros a la izquierda
-    legajo = value[0].get('Numero_de_personal', '')
-    return str(int(legajo)) if legajo.isdigit() else legajo
-
-# ── Azure helpers ─────────────────────────────────────────────────────────────
+# ── Azure Blob ────────────────────────────────────────────────────────────────
 def azure_configurado():
     return AZURE_CONNECTION_STRING and 'TU_ACCOUNT' not in AZURE_CONNECTION_STRING
 
@@ -103,9 +140,7 @@ def upload_to_azure(file_bytes, blob_name, original_name, uploader_name, dni):
             'uploaded_at':   datetime.now(timezone.utc).isoformat()
         }
         container.upload_blob(
-            name=blob_name,
-            data=file_bytes,
-            metadata=metadata,
+            name=blob_name, data=file_bytes, metadata=metadata,
             content_settings=ContentSettings(content_type='application/pdf'),
             overwrite=True
         )
@@ -114,15 +149,12 @@ def upload_to_azure(file_bytes, blob_name, original_name, uploader_name, dni):
         safe_path = os.path.join(UPLOADS_LOCAL, blob_name.replace('/', '_'))
         with open(safe_path, 'wb') as f:
             f.write(file_bytes)
-        meta_path = safe_path + '.meta.json'
-        with open(meta_path, 'w', encoding='utf-8') as f:
+        with open(safe_path + '.meta.json', 'w', encoding='utf-8') as f:
             json.dump({
-                'uploader':      uploader_name,
-                'dni':           dni,
+                'uploader': uploader_name, 'dni': dni,
                 'original_name': original_name,
-                'uploaded_at':   datetime.now(timezone.utc).isoformat(),
-                'blob_name':     blob_name,
-                'size':          len(file_bytes)
+                'uploaded_at': datetime.now(timezone.utc).isoformat(),
+                'blob_name': blob_name, 'size': len(file_bytes)
             }, f, ensure_ascii=False)
 
 def list_blobs_by_date(date_from, date_to):
@@ -155,8 +187,7 @@ def list_blobs_by_date(date_from, date_to):
         for fname in os.listdir(UPLOADS_LOCAL):
             if not fname.endswith('.meta.json'):
                 continue
-            meta_path = os.path.join(UPLOADS_LOCAL, fname)
-            with open(meta_path, encoding='utf-8') as f:
+            with open(os.path.join(UPLOADS_LOCAL, fname), encoding='utf-8') as f:
                 meta = json.load(f)
             uploaded_at = meta.get('uploaded_at', '')
             try:
@@ -178,8 +209,7 @@ def list_blobs_by_date(date_from, date_to):
 def download_blob(blob_name):
     if azure_configurado():
         container = get_container_client()
-        blob      = container.get_blob_client(blob_name)
-        return blob.download_blob().readall()
+        return container.get_blob_client(blob_name).download_blob().readall()
     else:
         safe_path = os.path.join(UPLOADS_LOCAL, blob_name.replace('/', '_'))
         with open(safe_path, 'rb') as f:
@@ -190,9 +220,9 @@ def extract_text_from_bytes(file_bytes):
     text = ""
     with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
         for page in pdf.pages:
-            page_text = page.extract_text()
-            if page_text:
-                text += page_text + "\n"
+            t = page.extract_text()
+            if t:
+                text += t + "\n"
     return text
 
 def find_field(text, patterns):
@@ -203,23 +233,19 @@ def find_field(text, patterns):
     return None
 
 def detect_type(text):
-    if re.search(r'RECIBO DE SUELDO', text, re.IGNORECASE):
-        return 'recibo'
-    if re.search(r'RECIBIMOS DE:', text, re.IGNORECASE):
-        return 'recibo_colegio'
-    if re.search(r'Nombre:.*?Apellido:', text, re.IGNORECASE | re.DOTALL):
-        return 'factura_apdes'
-    if re.search(r'Apellido y Nombre\s*/\s*Raz', text, re.IGNORECASE):
-        return 'factura_arca'
+    if re.search(r'RECIBO DE SUELDO', text, re.IGNORECASE): return 'recibo'
+    if re.search(r'RECIBIMOS DE:', text, re.IGNORECASE): return 'recibo_colegio'
+    if re.search(r'Nombre:.*?Apellido:', text, re.IGNORECASE | re.DOTALL): return 'factura_apdes'
+    if re.search(r'Apellido y Nombre\s*/\s*Raz', text, re.IGNORECASE): return 'factura_arca'
     return 'desconocido'
 
 def parse_nombre(text, doc_type):
     if doc_type == 'recibo':
-        result = find_field(text, [r'Datos del Empleador\s*\nApellido y Nombre:\s*([A-ZAÉÍÓÚÜÑ\s]+?)\s+CUIL'])
-        return result.strip() if result else "No encontrado"
+        r = find_field(text, [r'Datos del Empleador\s*\nApellido y Nombre:\s*([A-ZAÉÍÓÚÜÑ\s]+?)\s+CUIL'])
+        return r.strip() if r else "No encontrado"
     if doc_type == 'factura_arca':
-        result = find_field(text, [r'Apellido y Nombre\s*/\s*Raz[oó]n Social:\s*([A-Za-záéíóúüñÁÉÍÓÚÜÑ\s]+?)(?:\n|Domicilio|$)'])
-        return result.strip() if result else "No encontrado"
+        r = find_field(text, [r'Apellido y Nombre\s*/\s*Raz[oó]n Social:\s*([A-Za-záéíóúüñÁÉÍÓÚÜÑ\s]+?)(?:\n|Domicilio|$)'])
+        return r.strip() if r else "No encontrado"
     if doc_type == 'factura_apdes':
         nombre   = find_field(text, [r'Nombre:\s*([A-Za-záéíóúüñÁÉÍÓÚÜÑ]+(?:\s+[A-Za-záéíóúüñÁÉÍÓÚÜÑ]+)*?)\s+Apellido:'])
         apellido = find_field(text, [r'Apellido:\s*([A-Za-záéíóúüñÁÉÍÓÚÜÑ]+(?:\s+[A-Za-záéíóúüñÁÉÍÓÚÜÑ]+)*?)(?:\n|Familia|Barrio|$)'])
@@ -227,8 +253,8 @@ def parse_nombre(text, doc_type):
             return f"{apellido.strip()} {nombre.strip()}"
         return nombre or apellido or "No encontrado"
     if doc_type == 'recibo_colegio':
-        result = find_field(text, [r'RECIBIMOS DE:\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ\s]+?)(?:\n|DIRECCIÓN|Nro)'])
-        return result.strip() if result else "No encontrado"
+        r = find_field(text, [r'RECIBIMOS DE:\s*([A-ZÁÉÍÓÚÜÑ][A-ZÁÉÍÓÚÜÑ\s]+?)(?:\n|DIRECCIÓN|Nro)'])
+        return r.strip() if r else "No encontrado"
     return "No encontrado"
 
 def parse_importe(text, doc_type):
@@ -238,18 +264,14 @@ def parse_importe(text, doc_type):
     elif doc_type in ('factura_apdes', 'recibo_colegio'):
         raw = find_field(text, [r'TOTAL\s*\$\s*([\d.,]+)'])
     elif doc_type == 'recibo':
-        match = re.search(r'(?:^|\n)Total\s*\$\s*([\d.,]+)', text, re.MULTILINE)
-        if match:
-            raw = match.group(1)
+        m = re.search(r'(?:^|\n)Total\s*\$\s*([\d.,]+)', text, re.MULTILINE)
+        if m: raw = m.group(1)
     if not raw:
         return "No encontrado"
     try:
         raw = raw.strip()
         if ',' in raw and '.' in raw:
-            if raw.index('.') < raw.index(','):
-                raw = raw.replace('.', '').replace(',', '.')
-            else:
-                raw = raw.replace(',', '')
+            raw = raw.replace('.', '').replace(',', '.') if raw.index('.') < raw.index(',') else raw.replace(',', '')
         elif ',' in raw:
             raw = raw.replace(',', '.')
         numero = float(raw)
@@ -271,20 +293,142 @@ def parse_document(text):
     }
 
 # ══════════════════════════════════════════════════════════════════════════════
-# RUTAS
+# RUTAS DE AUTENTICACIÓN
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/login')
+def login_page():
+    # Si ya está logueado, redirigir según rol
+    if session.get('user'):
+        return redirect(url_for('admin_page') if is_admin_user() else url_for('upload_page'))
+    with open(os.path.join(os.path.dirname(__file__), 'templates', 'login.html'), encoding='utf-8') as f:
+        return f.read()
+
+@app.route('/auth/login')
+def auth_login():
+    if not entra_configurado():
+        return jsonify({'error': 'Entra ID no configurado. Completá el .env'}), 500
+    msal_app = get_msal_app()
+    state    = str(uuid.uuid4())
+    session['auth_state'] = state
+    auth_url = msal_app.get_authorization_request_url(
+        scopes=ENTRA_SCOPES,
+        state=state,
+        redirect_uri=ENTRA_REDIRECT_URI
+    )
+    return redirect(auth_url)
+
+@app.route('/auth/callback')
+def auth_callback():
+    # if request.args.get('state') != session.get('auth_state'):
+    #     print("ERROR: state no coincide")
+    #     return redirect(url_for('login_page'))
+
+    state_recibido = request.args.get('state')
+    state_sesion   = session.get('auth_state')
+    print(f"State recibido: {state_recibido}")
+    print(f"State en sesion: {state_sesion}")
+
+    if state_recibido != state_sesion:
+        print("WARN: states no coinciden, continuando igual para debug")
+        # return redirect(url_for('login_page'))  # comentado temporalmente
+
+    code = request.args.get('code')
+    if not code:
+        print("ERROR: no hay code en callback")
+        return redirect(url_for('login_page'))
+
+    msal_app = get_msal_app()
+    result   = msal_app.acquire_token_by_authorization_code(
+        code,
+        scopes=ENTRA_SCOPES,
+        redirect_uri=ENTRA_REDIRECT_URI
+    )
+
+    if 'error' in result:
+        print("ERROR token:", result.get('error'), result.get('error_description'))
+        return redirect(url_for('login_page'))
+
+    access_token = result.get('access_token')
+    user_info    = http_requests.get(
+        'https://graph.microsoft.com/v1.0/me',
+        headers={'Authorization': f'Bearer {access_token}'},
+        timeout=10
+    ).json()
+
+    groups = get_user_groups(access_token)
+
+    session['user'] = {
+        'name':  user_info.get('displayName', ''),
+        'email': user_info.get('mail') or user_info.get('userPrincipalName', ''),
+        'id':    user_info.get('id', '')
+    }
+    session['groups']       = groups
+    session['access_token'] = access_token
+
+    print("=== AUTH CALLBACK ===")
+    print("user:", session.get('user'))
+    print("groups:", groups)
+    print("ENTRA_ADMIN_GROUP_ID:", ENTRA_ADMIN_GROUP_ID)
+    print("is_admin:", is_admin_user())
+    print("====================")
+
+    if is_admin_user():
+        return redirect(url_for('admin_page'))
+    return redirect(url_for('upload_page'))
+
+@app.route('/auth/logout')
+def auth_logout():
+    session.clear()
+    if entra_configurado():
+        logout_url = f"{ENTRA_AUTHORITY}/oauth2/v2.0/logout?post_logout_redirect_uri={url_for('login_page', _external=True)}"
+        return redirect(logout_url)
+    return redirect(url_for('login_page'))
+
+# ══════════════════════════════════════════════════════════════════════════════
+# RUTAS PRINCIPALES
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route('/')
 def index():
+    if session.get('user'):
+        return redirect(url_for('admin_page') if is_admin_user() else url_for('upload_page'))
+    return redirect(url_for('login_page'))
+
+@app.route('/upload')
+@login_required
+def upload_page():
     with open(os.path.join(os.path.dirname(__file__), 'templates', 'upload.html'), encoding='utf-8') as f:
-        return f.read()
+        content = f.read()
+    user = session.get('user', {})
+    content = content.replace('{{USER_NAME}}', user.get('name', ''))
+    return content
 
 @app.route('/admin')
-def admin():
+@admin_required
+def admin_page():
     with open(os.path.join(os.path.dirname(__file__), 'templates', 'admin.html'), encoding='utf-8') as f:
-        return f.read()
+        content = f.read()
+    user = session.get('user', {})
+    content = content.replace('{{USER_NAME}}', user.get('name', ''))
+    return content
+
+# ══════════════════════════════════════════════════════════════════════════════
+# API
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/me')
+@login_required
+def api_me():
+    user = session.get('user', {})
+    return jsonify({
+        'name':     user.get('name', ''),
+        'email':    user.get('email', ''),
+        'is_admin': is_admin_user()
+    })
 
 @app.route('/api/upload', methods=['POST'])
+@login_required
 def api_upload():
     nombre = request.form.get('nombre', '').strip()
     dni    = request.form.get('dni', '').strip()
@@ -320,14 +464,10 @@ def api_upload():
     return jsonify({'subidos': subidos, 'errores': errores})
 
 @app.route('/api/admin/listar', methods=['POST'])
+@admin_required
 def api_listar():
-    password  = request.json.get('password', '')
     date_from = request.json.get('date_from', '')
     date_to   = request.json.get('date_to', '')
-
-    if password != ADMIN_PASSWORD:
-        return jsonify({'error': 'Contraseña incorrecta.'}), 401
-
     try:
         df       = datetime.strptime(date_from, '%Y-%m-%d').date()
         dt       = datetime.strptime(date_to,   '%Y-%m-%d').date()
@@ -337,13 +477,9 @@ def api_listar():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/admin/preview', methods=['POST'])
+@admin_required
 def api_preview():
-    password   = request.json.get('password', '')
     blob_names = request.json.get('blob_names', [])
-
-    if password != ADMIN_PASSWORD:
-        return jsonify({'error': 'Contraseña incorrecta.'}), 401
-
     resultados = []
     for blob_name in blob_names:
         try:
@@ -353,62 +489,28 @@ def api_preview():
             resultados.append({'blob_name': blob_name, 'archivo': blob_name.split('/')[-1], **data})
         except Exception as e:
             resultados.append({'blob_name': blob_name, 'archivo': blob_name.split('/')[-1], 'nombre': 'Error', 'importe': str(e), 'tipo': 'error'})
-
     return jsonify(resultados)
 
-# ── Nueva ruta: buscar legajo en SAP por DNI ──────────────────────────────────
-@app.route('/api/admin/buscar-legajo', methods=['POST'])
-def api_buscar_legajo():
-    password = request.json.get('password', '')
-    dni      = request.json.get('dni', '')
-
-    if password != ADMIN_PASSWORD:
-        return jsonify({'error': 'Contraseña incorrecta.'}), 401
-    if not dni:
-        return jsonify({'error': 'DNI requerido.'}), 400
-
-    try:
-        legajo = buscar_legajo_por_dni(dni)
-        if legajo:
-            return jsonify({'legajo': legajo})
-        else:
-            return jsonify({'legajo': None, 'mensaje': 'DNI no encontrado en SAP'})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-# ── Nueva ruta: buscar legajos para todos los archivos del preview ─────────────
 @app.route('/api/admin/buscar-legajos-bulk', methods=['POST'])
+@admin_required
 def api_buscar_legajos_bulk():
-    password = request.json.get('password', '')
-    items    = request.json.get('items', [])  # [{ blob_name, dni }, ...]
-
-    if password != ADMIN_PASSWORD:
-        return jsonify({'error': 'Contraseña incorrecta.'}), 401
-
+    items      = request.json.get('items', [])
     resultados = {}
     for item in items:
         dni       = item.get('dni', '')
         blob_name = item.get('blob_name', '')
-        if not dni:
-            resultados[blob_name] = None
-            continue
         try:
-            legajo = buscar_legajo_por_dni(dni)
-            resultados[blob_name] = legajo
-        except Exception as e:
+            resultados[blob_name] = buscar_legajo_por_dni(dni) if dni else None
+        except Exception:
             resultados[blob_name] = None
-
     return jsonify({'legajos': resultados})
 
 @app.route('/api/admin/generar-txt', methods=['POST'])
+@admin_required
 def api_generar_txt():
-    password          = request.json.get('password', '')
     campos            = request.json.get('campos', [])
     importes_override = request.json.get('importes_override', {})
     filas             = request.json.get('filas', [])
-
-    if password != ADMIN_PASSWORD:
-        return jsonify({'error': 'Contraseña incorrecta.'}), 401
 
     lines = []
     lines.append("Legajo SAP\tCC-N\t Importe \tCantidad\tFecha\t\t")

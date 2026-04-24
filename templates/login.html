@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Iniciar sesión — Distrocuyo</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=Nunito+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/distrocuyo.css">
+  <style>
+    body { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; padding:24px 16px; }
+    .login-card { background:var(--surface); border:1px solid var(--border2); border-radius:var(--radius-xl); width:100%; max-width:420px; overflow:hidden; box-shadow:var(--shadow-lg); }
+    .login-body { padding:44px 40px 40px; text-align:center; }
+    .login-logo { display:flex; justify-content:center; margin-bottom:32px; }
+    .login-logo img { height:64px; width:auto; }
+    .login-title { font-family:var(--font-display); font-size:26px; font-weight:800; color:var(--blue); margin-bottom:8px; }
+    .login-subtitle { font-size:14px; color:var(--ink2); line-height:1.6; margin-bottom:36px; }
+    .login-footer { margin-top:28px; font-size:12px; color:var(--muted); }
+    .login-footer span { display:inline-block; background:var(--blue-light); color:var(--blue); padding:4px 10px; border-radius:20px; font-weight:600; font-size:11px; }
+  </style>
+</head>
+<body>
+  <div class="login-card anim-up">
+    <div class="accent-bar"></div>
+    <div class="login-body">
+      <div class="login-logo">
+        <img src="/static/logo.png" alt="Distrocuyo" onerror="this.style.display='none';document.getElementById('logo-fallback').style.display='block'">
+        <span id="logo-fallback" style="display:none;font-family:var(--font-display);font-size:26px;font-weight:800;color:var(--blue)">Distrocuyo</span>
+      </div>
+      <div class="login-title">Portal de Reintegros de Guarderia</div>
+     
+      <a href="/auth/login" class="btn-microsoft">
+        <svg width="20" height="20" viewBox="0 0 21 21" fill="none"><rect x="1" y="1" width="9" height="9" fill="#f25022"/><rect x="11" y="1" width="9" height="9" fill="#7fba00"/><rect x="1" y="11" width="9" height="9" fill="#00a4ef"/><rect x="11" y="11" width="9" height="9" fill="#ffb900"/></svg>
+        Iniciar sesión con Microsoft
+      </a>
+      
+    </div>
+  </div>
+</body>
+</html>

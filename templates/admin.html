@@ -3,122 +3,39 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin — PDF Extractor</title>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+  <title>Panel Admin — Distrocuyo</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&family=Nunito+Sans:wght@300;400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/distrocuyo.css">
   <style>
-
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    :root {
-      --bg:      #09090f;
-      --surface: #111118;
-      --border:  #1e1e2e;
-      --accent:  #7c6aff;
-      --green:   #00d4aa;
-      --red:     #ff6b6b;
-      --orange:  #ffa94d;
-      --text:    #e8e8f0;
-      --muted:   #6b6b8a;
+    body { display:flex; flex-direction:column; min-height:100vh; padding-bottom:40px; }
+    .main-content { flex:1; padding:28px 16px; }
+    .wrapper { max-width:980px; margin:0 auto; }
+    /* Admin-specific overrides para dark inputs en tabla */
+    .preview-input {
+      background:var(--bg);border:1.5px solid var(--border);border-radius:var(--radius-sm);
+      padding:6px 8px;color:var(--ink);font-family:var(--font-mono);font-size:12px;outline:none;
+      transition:border-color .2s;
     }
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font-family: 'Syne', sans-serif;
-      min-height: 100vh;
-      padding: 32px 16px;
-    }
-    body::before {
-      content: '';
-      position: fixed; inset: 0;
-      background-image: linear-gradient(rgba(124,106,255,.02) 1px,transparent 1px), linear-gradient(90deg,rgba(124,106,255,.02) 1px,transparent 1px);
-      background-size: 40px 40px;
-      pointer-events: none; z-index: 0;
-    }
-    .wrapper { position: relative; z-index: 1; max-width: 960px; margin: 0 auto; }
-
-    /* Header */
-    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 32px; flex-wrap: wrap; gap: 12px; }
-    header h1 { font-size: 28px; font-weight: 800; letter-spacing: -.03em; }
-    header .tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: var(--accent); background: rgba(124,106,255,.1); border: 1px solid rgba(124,106,255,.2); border-radius: 20px; padding: 4px 12px; }
-
-    /* Login */
-    #login-section { max-width: 400px; margin: 80px auto; }
-    #login-section h2 { font-size: 22px; font-weight: 700; margin-bottom: 24px; text-align: center; }
-
-    /* Card */
-    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; margin-bottom: 20px; }
-    .card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
-    .card-header .label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: var(--muted); }
-    .card-body { padding: 20px; }
-
-    /* Inputs */
-    .input-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
-    .input-group { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 140px; }
-    .input-group label { font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
-    input[type="text"], input[type="password"], input[type="date"], input[type="number"] {
-      background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
-      padding: 10px 14px; color: var(--text); font-family: 'JetBrains Mono', monospace;
-      font-size: 13px; outline: none; transition: border-color .2s; width: 100%;
-    }
-    input:focus { border-color: var(--accent); }
-
-    /* Buttons */
-    .btn { padding: 10px 20px; border-radius: 10px; border: none; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px; cursor: pointer; transition: all .2s; display: inline-flex; align-items: center; gap: 6px; }
-    .btn-primary { background: var(--accent); color: #fff; box-shadow: 0 0 20px rgba(124,106,255,.25); }
-    .btn-primary:hover { box-shadow: 0 0 30px rgba(124,106,255,.45); }
-    .btn-primary:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; box-shadow: none; }
-    .btn-green  { background: var(--green); color: #0a0a0f; }
-    .btn-green:hover { opacity: .85; }
-    .btn-green:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
-    .btn-ghost  { background: none; border: 1px solid var(--border); color: var(--muted); }
-    .btn-ghost:hover { border-color: var(--accent); color: var(--text); }
-
-    /* Checkboxes */
-    .checkbox-group { display: flex; gap: 10px; flex-wrap: wrap; }
-    .chk-item { display: flex; align-items: center; gap: 8px; cursor: pointer; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 8px 14px; transition: all .2s; user-select: none; font-size: 13px; font-weight: 600; }
-    .chk-item:hover { border-color: var(--accent); }
-    .chk-item input { display: none; }
-    .chk-box { width: 16px; height: 16px; border: 1.5px solid var(--border); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 10px; transition: all .2s; flex-shrink: 0; }
-    .chk-item.checked { border-color: var(--accent); background: rgba(124,106,255,.06); }
-    .chk-item.checked .chk-box { background: var(--accent); border-color: var(--accent); color: #fff; }
-
-    /* Table */
-    .table-wrap { overflow-x: auto; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th { text-align: left; padding: 10px 14px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
-    td { padding: 11px 14px; border-bottom: 1px solid rgba(255,255,255,.03); vertical-align: middle; }
-    tr:last-child td { border-bottom: none; }
-    tr:hover td { background: rgba(255,255,255,.015); }
-    .mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); }
-    .tag-green { color: var(--green); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
-    .tag-muted { color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
-
-    /* Alert */
-    .alert { border-radius: 10px; padding: 11px 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px; margin-bottom: 14px; display: none; }
-    .alert-error   { background: rgba(255,107,107,.1); border: 1px solid rgba(255,107,107,.3); color: var(--red); }
-    .alert-success { background: rgba(0,212,170,.1);   border: 1px solid rgba(0,212,170,.3);   color: var(--green); }
-
-    /* Tope input */
-    .tope-wrap { display: flex; align-items: center; gap: 8px; }
-    .tope-wrap span { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--muted); }
-
-    /* Spinner */
-    .spinner { width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.2); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; display: inline-block; }
-    .spinner-dark { border: 2px solid rgba(0,0,0,.15); border-top-color: #0a0a0f; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* Empty state */
-    .empty { text-align: center; padding: 48px 20px; color: var(--muted); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
-
-    /* Select all */
-    .select-bar { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); font-family: 'JetBrains Mono', monospace; }
-
-    
+    .preview-input:focus { border-color:var(--blue); }
   </style>
 </head>
 <body>
-<div class="wrapper">
+  <div class="accent-bar"></div>
 
-  <header>
+  <nav class="topbar">
+    <a class="distro-logo" href="/">
+      <img src="/static/logo.png" alt="Distrocuyo" onerror="this.outerHTML='<span style=\"font-family:var(--font-display);font-weight:800;color:var(--blue);font-size:18px\">Distrocuyo</span>'">
+    </a>
+    <div class="topbar-right">
+      <span class="version-tag">Panel Admin</span>
+      <span class="username">{{USER_NAME}}</span>
+      <a href="/auth/logout" class="logout-btn">Salir</a>
+    </div>
+  </nav>
+
+  <div class="main-content">
+    <div class="wrapper">
+<header>
     <h1>Panel Admin</h1>
     <span class="tag">PDF Extractor</span>
   </header>
@@ -230,10 +147,7 @@
     <div class="card" id="preview-card" style="display:none">
       <div class="card-header">
         <span class="label">04 / Preview y descarga</span>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-ghost" id="btn-sap" onclick="autocompletarLegajos()">⚡ Autocompletar legajos (SAP)</button>
-          <button class="btn btn-green" id="btn-download" onclick="descargar()">↓ Descargar .txt</button>
-        </div>
+        <button class="btn btn-green" id="btn-download" onclick="descargar()">↓ Descargar .txt</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -245,9 +159,11 @@
 
     <div class="alert alert-error"   id="main-error"></div>
     <div class="alert alert-success" id="main-success"></div>
+      <div class="alert alert-error"   id="main-error"   style="display:none"></div>
+      <div class="alert alert-success" id="main-success" style="display:none"></div>
 
-  </div><!-- /main -->
-</div>
+    </div>
+  </div>
 
 <script>
 
@@ -393,15 +309,15 @@
   }
 
   function recalcularImporte(i) {
-    const hijos = parseFloat(document.getElementById(`hijos-${i}`)?.value) || 1;
-    const cell  = document.getElementById(`imp-cell-${i}`);
+    const cant = parseFloat(document.getElementById(`cant-${i}`)?.value) || 1;
+    const cell = document.getElementById(`imp-cell-${i}`);
     if (!cell) return;
     const base = cell.dataset.base;
     if (!base || base === 'No encontrado') return;
-    const numStr = base.replace('$ ','').replace(/\.$/g,'').replace(',','.');
+    const numStr = base.replace('$ ','').replace(/\./g,'').replace(',','.');
     const num    = parseFloat(numStr);
     if (isNaN(num)) return;
-    const resultado = num * hijos;
+    const resultado = num * cant;
     cell.innerText = '$ ' + resultado.toLocaleString('es-AR', {minimumFractionDigits:2, maximumFractionDigits:2});
   }
 
@@ -409,15 +325,11 @@
     const campos = getCampos();
     const thead  = document.getElementById('preview-thead');
     const tbody  = document.getElementById('preview-tbody');
-    const inputStyle = "background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 8px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;outline:none;";
 
     let hdr = '<tr><th>Archivo</th><th>Subido por</th>';
-    if (campos.includes('nombre'))  hdr += '<th>Nombre y apellido</th>';
-    hdr += '<th>Hijos</th>';
-    if (campos.includes('dni'))     hdr += '<th>DNI</th>';
-    hdr += '<th>N° de legajo</th><th>CC-N</th>';
-    if (campos.includes('importe')) hdr += '<th>Importe total</th>';
-    hdr += '<th>Cantidad</th><th>Fecha</th><th></th></tr>';
+   if (campos.includes('dni'))     hdr += '<th>DNI</th>';
+    if (campos.includes('importe')) hdr += '<th>Cantidad</th><th>Importe total</th>';
+    hdr += '<th></th></tr>';
     thead.innerHTML = hdr;
 
     tbody.innerHTML = previewData.map((row, i) => {
@@ -430,21 +342,18 @@
         const ok = row.nombre !== 'No encontrado';
         tr += `<td class="${ok ? 'tag-green' : 'tag-muted'}">${row.nombre}</td>`;
       }
-      tr += `<td><input type="number" min="1" max="99" value="1" id="hijos-${i}" onchange="recalcularImporte(${i})" style="width:60px;${inputStyle}"></td>`;
       if (campos.includes('dni')) {
+        const archivoInfo = archivosData.find(a => a.blob_name === row.blob_name);
         const dni = archivoInfo?.dni || '—';
         tr += `<td class="mono">${dni}</td>`;
       }
-      tr += `<td><input type="text" id="legajo-${i}" placeholder="—" style="width:90px;${inputStyle}"></td>`;
-      tr += `<td class="mono" style="color:var(--accent);font-weight:600">2412</td>`;
       if (campos.includes('importe')) {
         const importeFinal = aplicarTope(row.importe);
         const ok = importeFinal !== 'No encontrado';
+        tr += `<td><input type="number" min="1" max="99" value="1" id="cant-${i}" onchange="recalcularImporte(${i})" style="width:60px;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:6px 8px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;text-align:center;outline:none"></td>`;
         tr += `<td class="${ok ? 'tag-green' : 'tag-muted'}" id="imp-cell-${i}" data-base="${importeFinal}">${importeFinal}</td>`;
       }
-      tr += `<td class="mono" style="color:var(--muted)">—</td>`;
-      tr += `<td><input type="text" id="fecha-${i}" placeholder="DD/MM/AAAA" style="width:110px;${inputStyle}"></td>`;
-      tr += `<td><button onclick="eliminarFila(${i})" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:2px 6px;border-radius:4px;transition:color .2s" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">&#x2715;</button></td>`;
+      tr += `<td><button onclick="eliminarFila(${i})" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:2px 6px;border-radius:4px;transition:color .2s" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">✕</button></td>`;
       tr += '</tr>';
       return tr;
     }).join('');
@@ -462,6 +371,7 @@
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner spinner-dark"></span> Generando…';
 
+    // Armar importes finales (con tope + cantidad)
     const importes_override = {};
     previewData.forEach((row, i) => {
       const cell = document.getElementById(`imp-cell-${i}`);
@@ -469,11 +379,9 @@
     });
 
     try {
-      const filasConDni = previewData.map((row, i) => {
-        const info   = archivosData.find(a => a.blob_name === row.blob_name);
-        const legajo = document.getElementById(`legajo-${i}`)?.value || '';
-        const fecha  = document.getElementById(`fecha-${i}`)?.value  || '';
-        return { ...row, dni: info?.dni || '', legajo, fecha };
+      const filasConDni = previewData.map(row => {
+        const info = archivosData.find(a => a.blob_name === row.blob_name);
+        return { ...row, dni: info?.dni || '' };
       });
       const res = await fetch('/api/admin/generar-txt', {
         method: 'POST',
@@ -495,49 +403,6 @@
     } finally {
       btn.disabled  = false;
       btn.innerHTML = '↓ Descargar .txt';
-    }
-  }
-
-  // ── Autocompletar legajos desde SAP ───────────────────────────────
-  async function autocompletarLegajos() {
-    const btn = document.getElementById('btn-sap');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Consultando SAP…';
-    limpiarAlertas();
-
-    const items = previewData.map(row => {
-      const info = archivosData.find(a => a.blob_name === row.blob_name);
-      return { blob_name: row.blob_name, dni: info?.dni || '' };
-    });
-
-    try {
-      const res  = await fetch('/api/admin/buscar-legajos-bulk', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ password, items })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al consultar SAP.');
-
-      const legajos = data.legajos;
-      let encontrados = 0;
-      previewData.forEach((row, i) => {
-        const legajo = legajos[row.blob_name];
-        const input  = document.getElementById(`legajo-${i}`);
-        if (input && legajo) {
-          input.value = legajo;
-          input.style.borderColor = 'var(--green)';
-          encontrados++;
-        } else if (input) {
-          input.style.borderColor = 'var(--red)';
-        }
-      });
-      mostrarSuccess(`✓ ${encontrados} legajo(s) completado(s) desde SAP.`);
-    } catch (err) {
-      mostrarError(err.message);
-    } finally {
-      btn.disabled  = false;
-      btn.innerHTML = '&#x26A1; Autocompletar legajos (SAP)';
     }
   }
 
