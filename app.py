@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, send_file, redirect, url_for, session
 from flask_cors import CORS
+from flask_session import Session
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from dotenv import load_dotenv
 import pdfplumber
@@ -16,9 +17,16 @@ load_dotenv()
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
-app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
-app.config['SESSION_COOKIE_SECURE']   = False  # True en producción con HTTPS
-app.config['SESSION_COOKIE_HTTPONLY'] = True
+
+# ── Sesiones server-side (evita pérdida de sesión en redirect OAuth2) ─────────
+app.config['SESSION_TYPE']             = 'filesystem'
+app.config['SESSION_FILE_DIR']         = os.path.join(os.path.dirname(__file__), 'flask_sessions')
+app.config['SESSION_PERMANENT']        = False
+app.config['SESSION_COOKIE_SAMESITE']  = 'Lax'
+app.config['SESSION_COOKIE_SECURE']    = os.getenv('FLASK_ENV') == 'production'
+app.config['SESSION_COOKIE_HTTPONLY']  = True
+Session(app)
+
 CORS(app)
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -37,8 +45,8 @@ ENTRA_CLIENT_SECRET  = os.getenv('ENTRA_CLIENT_SECRET', '')
 ENTRA_REDIRECT_URI   = os.getenv('ENTRA_REDIRECT_URI', 'http://localhost:8000/auth/callback')
 ENTRA_ADMIN_GROUP_ID = os.getenv('ENTRA_ADMIN_GROUP_ID', '')
 
-ENTRA_AUTHORITY     = f'https://login.microsoftonline.com/{ENTRA_TENANT_ID}'
-ENTRA_SCOPES        = ['User.Read', 'GroupMember.Read.All']
+ENTRA_AUTHORITY = f'https://login.microsoftonline.com/{ENTRA_TENANT_ID}'
+ENTRA_SCOPES    = ['User.Read', 'GroupMember.Read.All']
 
 def entra_configurado():
     return all([ENTRA_TENANT_ID, ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET])
@@ -60,14 +68,13 @@ def get_user_groups(access_token):
     )
     if res.status_code != 200:
         return []
-    data = res.json()
-    return [g.get('id', '') for g in data.get('value', [])]
+    return [g.get('id', '') for g in res.json().get('value', [])]
 
 def is_admin_user():
     if not session.get('user'):
         return False
     if not ENTRA_ADMIN_GROUP_ID:
-        return session['user'].get('role') == 'admin'
+        return True  # Sin grupo configurado, todos son admin
     return ENTRA_ADMIN_GROUP_ID in session.get('groups', [])
 
 def login_required(f):
@@ -115,8 +122,7 @@ def buscar_legajo_por_dni(dni):
     url   = f"{SAP_API_URL}?$filter=DNI eq '{dni}'&$top=1"
     res   = http_requests.get(url, headers={'Authorization': f'Bearer {token}'}, timeout=10)
     res.raise_for_status()
-    data  = res.json()
-    value = data.get('value', [])
+    value = res.json().get('value', [])
     if not value:
         return None
     legajo = value[0].get('Numero_de_personal', '')
@@ -298,7 +304,6 @@ def parse_document(text):
 
 @app.route('/login')
 def login_page():
-    # Si ya está logueado, redirigir según rol
     if session.get('user'):
         return redirect(url_for('admin_page') if is_admin_user() else url_for('upload_page'))
     with open(os.path.join(os.path.dirname(__file__), 'templates', 'login.html'), encoding='utf-8') as f:
@@ -320,22 +325,15 @@ def auth_login():
 
 @app.route('/auth/callback')
 def auth_callback():
-    # if request.args.get('state') != session.get('auth_state'):
-    #     print("ERROR: state no coincide")
-    #     return redirect(url_for('login_page'))
-
     state_recibido = request.args.get('state')
     state_sesion   = session.get('auth_state')
-    print(f"State recibido: {state_recibido}")
-    print(f"State en sesion: {state_sesion}")
 
     if state_recibido != state_sesion:
-        print("WARN: states no coinciden, continuando igual para debug")
-        # return redirect(url_for('login_page'))  # comentado temporalmente
+        app.logger.warning(f'State mismatch: recibido={state_recibido} sesion={state_sesion}')
+        return redirect(url_for('login_page'))
 
     code = request.args.get('code')
     if not code:
-        print("ERROR: no hay code en callback")
         return redirect(url_for('login_page'))
 
     msal_app = get_msal_app()
@@ -346,7 +344,7 @@ def auth_callback():
     )
 
     if 'error' in result:
-        print("ERROR token:", result.get('error'), result.get('error_description'))
+        app.logger.error(f'Token error: {result.get("error")} — {result.get("error_description")}')
         return redirect(url_for('login_page'))
 
     access_token = result.get('access_token')
@@ -366,12 +364,7 @@ def auth_callback():
     session['groups']       = groups
     session['access_token'] = access_token
 
-    print("=== AUTH CALLBACK ===")
-    print("user:", session.get('user'))
-    print("groups:", groups)
-    print("ENTRA_ADMIN_GROUP_ID:", ENTRA_ADMIN_GROUP_ID)
-    print("is_admin:", is_admin_user())
-    print("====================")
+    app.logger.info(f'Login exitoso: {session["user"]["email"]} | admin={is_admin_user()}')
 
     if is_admin_user():
         return redirect(url_for('admin_page'))
@@ -401,8 +394,7 @@ def upload_page():
     with open(os.path.join(os.path.dirname(__file__), 'templates', 'upload.html'), encoding='utf-8') as f:
         content = f.read()
     user = session.get('user', {})
-    content = content.replace('{{USER_NAME}}', user.get('name', ''))
-    return content
+    return content.replace('{{USER_NAME}}', user.get('name', ''))
 
 @app.route('/admin')
 @admin_required
@@ -410,8 +402,7 @@ def admin_page():
     with open(os.path.join(os.path.dirname(__file__), 'templates', 'admin.html'), encoding='utf-8') as f:
         content = f.read()
     user = session.get('user', {})
-    content = content.replace('{{USER_NAME}}', user.get('name', ''))
-    return content
+    return content.replace('{{USER_NAME}}', user.get('name', ''))
 
 # ══════════════════════════════════════════════════════════════════════════════
 # API
@@ -488,7 +479,8 @@ def api_preview():
             data       = parse_document(text)
             resultados.append({'blob_name': blob_name, 'archivo': blob_name.split('/')[-1], **data})
         except Exception as e:
-            resultados.append({'blob_name': blob_name, 'archivo': blob_name.split('/')[-1], 'nombre': 'Error', 'importe': str(e), 'tipo': 'error'})
+            resultados.append({'blob_name': blob_name, 'archivo': blob_name.split('/')[-1],
+                               'nombre': 'Error', 'importe': str(e), 'tipo': 'error'})
     return jsonify(resultados)
 
 @app.route('/api/admin/buscar-legajos-bulk', methods=['POST'])
@@ -512,8 +504,7 @@ def api_generar_txt():
     importes_override = request.json.get('importes_override', {})
     filas             = request.json.get('filas', [])
 
-    lines = []
-    lines.append("Legajo SAP\tCC-N\t Importe \tCantidad\tFecha\t\t")
+    lines = ["Legajo SAP\tCC-N\t Importe \tCantidad\tFecha\t\t"]
 
     for fila in filas:
         legajo = fila.get('legajo', '')
@@ -534,5 +525,5 @@ def api_generar_txt():
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8000))
-    print(f"Servidor corriendo en http://localhost:{port}")
-    app.run(debug=True, port=port)
+    app.logger.info(f'Servidor corriendo en http://localhost:{port}')
+    app.run(debug=os.getenv('FLASK_ENV') != 'production', port=port)

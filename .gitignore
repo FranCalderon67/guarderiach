@@ -1,2 +1,4 @@
 .env
 /uploads
+.env.example
+/flask_sessions
