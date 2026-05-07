@@ -1,62 +1,59 @@
 trigger:
 - main
- 
+
+# Definimos el agente a nivel global para evitar errores de sintaxis
+pool:
+  name: 'Default'
+
 variables:
-  # El nombre de la Service Connection que creaste
-  azureServiceConnection: 'appguarderia'
-  # El nombre exacto de la App en Azure
+  azureServiceConnection: 'sc-appguarderia'
   webAppName: 'appguarderia-distrocuyo'
-  # Versión de Python
   pythonVersion: '3.12'
- 
+
 stages:
 - stage: Build
-  displayName: 'Fase de Construcción'
+  displayName: 'Fase de Construccion'
   jobs:
   - job: BuildJob
-    pool:
-      name: 'Default' # Tu agente self-hosted en C:\vsts
     steps:
     - task: UsePythonVersion@0
       inputs:
         versionSpec: $(pythonVersion)
       displayName: 'Configurar Python $(pythonVersion)'
- 
+
     - script: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-      displayName: 'Instalar dependencias y validar sintaxis'
- 
+      displayName: 'Validar dependencias'
+
     - task: ArchiveFiles@2
-      displayName: 'Empaquetar aplicación (ZIP)'
+      displayName: 'Empaquetar ZIP'
       inputs:
         rootFolderOrFile: '$(Build.SourcesDirectory)'
         includeRootFolder: false
         archiveType: 'zip'
         archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
         replaceExistingArchive: true
- 
+
     - task: PublishBuildArtifacts@1
-      displayName: 'Subir Artefacto a VSTS'
+      displayName: 'Publicar Artefacto'
       inputs:
         PathtoPublish: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
         ArtifactName: 'drop'
- 
+
 - stage: Deploy
   displayName: 'Fase de Despliegue'
   dependsOn: Build
   condition: succeeded()
   jobs:
   - deployment: DeployJob
-    pool:
-      name: 'Default'
     environment: 'production'
     strategy:
       runOnce:
         deploy:
           steps:
           - task: AzureWebApp@1
-            displayName: 'Desplegar en Azure App Service Linux'
+            displayName: 'Desplegar en App Service Linux'
             inputs:
               azureSubscription: $(azureServiceConnection)
               appType: 'webAppLinux'
