@@ -2,33 +2,33 @@ trigger:
 - main
  
 variables:
-  # El nombre que definiste en el Paso 2.4
-  azureServiceConnection: 'conexion-azure-distrocuyo'
-  # El nombre exacto de la App en el portal
+  # El nombre de la Service Connection que creaste
+  azureServiceConnection: 'appguarderia'
+  # El nombre exacto de la App en Azure
   webAppName: 'appguarderia-distrocuyo'
+  # Versión de Python
   pythonVersion: '3.11'
  
 stages:
 - stage: Build
-  displayName: 'Fase de Compilación'
+  displayName: 'Fase de Construcción'
   jobs:
   - job: BuildJob
     pool:
-      vmImage: 'ubuntu-latest' # Usamos el agente de Microsoft para el build de Linux
+      name: 'Default' # Tu agente self-hosted en C:\vsts
     steps:
     - task: UsePythonVersion@0
       inputs:
         versionSpec: $(pythonVersion)
+      displayName: 'Configurar Python $(pythonVersion)'
  
     - script: |
-        python -m venv antenv
-        source antenv/bin/activate
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-      displayName: 'Instalar dependencias y validar'
+      displayName: 'Instalar dependencias y validar sintaxis'
  
     - task: ArchiveFiles@2
-      displayName: 'Empaquetar código'
+      displayName: 'Empaquetar aplicación (ZIP)'
       inputs:
         rootFolderOrFile: '$(Build.SourcesDirectory)'
         includeRootFolder: false
@@ -36,8 +36,11 @@ stages:
         archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
         replaceExistingArchive: true
  
-    - publish: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
-      artifact: drop
+    - task: PublishBuildArtifacts@1
+      displayName: 'Subir Artefacto a VSTS'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+        ArtifactName: 'drop'
  
 - stage: Deploy
   displayName: 'Fase de Despliegue'
@@ -46,13 +49,14 @@ stages:
   jobs:
   - deployment: DeployJob
     pool:
-      vmImage: 'ubuntu-latest'
+      name: 'Default'
     environment: 'production'
     strategy:
       runOnce:
         deploy:
           steps:
           - task: AzureWebApp@1
+            displayName: 'Desplegar en Azure App Service Linux'
             inputs:
               azureSubscription: $(azureServiceConnection)
               appType: 'webAppLinux'
