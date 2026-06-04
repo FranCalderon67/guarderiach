@@ -7,16 +7,16 @@
 
 /* ── Variables ──────────────────────────────────────────────── */
 :root {
-  /* Paleta Distrocuyo */
-  --blue:       #1B3A8C;   /* Pantone 661c */
-  --blue-dark:  #142d6e;
-  --blue-light: #e8edf8;
-  --green:      #3A8C1B;   /* Pantone 362c */
-  --green-dark: #2d6e14;
-  --green-light:#eaf4e6;
-  --teal:       #00B5B0;   /* Pantone 3125c */
-  --teal-dark:  #008f8b;
-  --teal-light: #e0f7f6;
+  /* Paleta Distrocuyo — Pantone solid matte */
+  --blue:       #1B3B8F;   /* Pantone 661m */
+  --blue-dark:  #132d70;
+  --blue-light: #e6ecf9;
+  --green:      #2E8B1A;   /* Pantone 362m */
+  --green-dark: #226613;
+  --green-light:#e8f5e4;
+  --teal:       #00B2AE;   /* Pantone 3125m */
+  --teal-dark:  #008c88;
+  --teal-light: #ddf6f5;
 
   /* Neutros */
   --white:      #ffffff;
