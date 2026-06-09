@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify, send_file, redirect, url_for, session
 from flask_cors import CORS
-from flask_session import Session
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from dotenv import load_dotenv
 import pdfplumber
@@ -17,22 +16,15 @@ load_dotenv()
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
-
-# ── Sesiones server-side (evita pérdida de sesión en redirect OAuth2) ─────────
-app.config['SESSION_TYPE']             = 'filesystem'
-app.config['SESSION_FILE_DIR']         = os.path.join(os.path.dirname(__file__), 'flask_sessions')
-app.config['SESSION_PERMANENT']        = False
-app.config['SESSION_COOKIE_SAMESITE']  = 'Lax'
-app.config['SESSION_COOKIE_SECURE']    = os.getenv('FLASK_ENV') == 'production'
-app.config['SESSION_COOKIE_HTTPONLY']  = True
-Session(app)
-
 CORS(app)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 AZURE_CONNECTION_STRING = os.getenv('AZURE_CONNECTION_STRING', '')
 AZURE_CONTAINER_NAME    = os.getenv('AZURE_CONTAINER_NAME', 'documentos')
-UPLOADS_LOCAL           = os.path.join(os.path.dirname(__file__), 'uploads')
+
+# Ruta de almacenamiento: Azure Files montado como carpeta local en producción
+# En desarrollo local usa la carpeta 'uploads/' del proyecto
+STORAGE_PATH = '/capitalhumano' if os.path.exists('/capitalhumano') else os.path.join(os.path.dirname(__file__), 'uploads')
 
 SAP_TOKEN_URL     = os.getenv('SAP_TOKEN_URL', 'https://distrocuyo-data.authentication.us10.hana.ondemand.com/oauth/token')
 SAP_CLIENT_ID     = os.getenv('SAP_CLIENT_ID', '')
@@ -45,8 +37,8 @@ ENTRA_CLIENT_SECRET  = os.getenv('ENTRA_CLIENT_SECRET', '')
 ENTRA_REDIRECT_URI   = os.getenv('ENTRA_REDIRECT_URI', 'http://localhost:8000/auth/callback')
 ENTRA_ADMIN_GROUP_ID = os.getenv('ENTRA_ADMIN_GROUP_ID', '')
 
-ENTRA_AUTHORITY = f'https://login.microsoftonline.com/{ENTRA_TENANT_ID}'
-ENTRA_SCOPES    = ['User.Read', 'GroupMember.Read.All']
+ENTRA_AUTHORITY     = f'https://login.microsoftonline.com/{ENTRA_TENANT_ID}'
+ENTRA_SCOPES        = ['User.Read', 'GroupMember.Read.All']
 
 def entra_configurado():
     return all([ENTRA_TENANT_ID, ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET])
@@ -68,13 +60,14 @@ def get_user_groups(access_token):
     )
     if res.status_code != 200:
         return []
-    return [g.get('id', '') for g in res.json().get('value', [])]
+    data = res.json()
+    return [g.get('id', '') for g in data.get('value', [])]
 
 def is_admin_user():
     if not session.get('user'):
         return False
     if not ENTRA_ADMIN_GROUP_ID:
-        return True  # Sin grupo configurado, todos son admin
+        return session['user'].get('role') == 'admin'
     return ENTRA_ADMIN_GROUP_ID in session.get('groups', [])
 
 def login_required(f):
@@ -122,7 +115,8 @@ def buscar_legajo_por_dni(dni):
     url   = f"{SAP_API_URL}?$filter=DNI eq '{dni}'&$top=1"
     res   = http_requests.get(url, headers={'Authorization': f'Bearer {token}'}, timeout=10)
     res.raise_for_status()
-    value = res.json().get('value', [])
+    data  = res.json()
+    value = data.get('value', [])
     if not value:
         return None
     legajo = value[0].get('Numero_de_personal', '')
@@ -130,7 +124,8 @@ def buscar_legajo_por_dni(dni):
 
 # ── Azure Blob ────────────────────────────────────────────────────────────────
 def azure_configurado():
-    return AZURE_CONNECTION_STRING and 'TU_ACCOUNT' not in AZURE_CONNECTION_STRING
+    # Con Azure Files montado como carpeta local, siempre usamos filesystem
+    return False
 
 def get_container_client():
     client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
@@ -151,8 +146,8 @@ def upload_to_azure(file_bytes, blob_name, original_name, uploader_name, dni):
             overwrite=True
         )
     else:
-        os.makedirs(UPLOADS_LOCAL, exist_ok=True)
-        safe_path = os.path.join(UPLOADS_LOCAL, blob_name.replace('/', '_'))
+        os.makedirs(STORAGE_PATH, exist_ok=True)
+        safe_path = os.path.join(STORAGE_PATH, blob_name.replace('/', '_'))
         with open(safe_path, 'wb') as f:
             f.write(file_bytes)
         with open(safe_path + '.meta.json', 'w', encoding='utf-8') as f:
@@ -188,12 +183,12 @@ def list_blobs_by_date(date_from, date_to):
         return sorted(resultados, key=lambda x: x['uploaded_at'], reverse=True)
     else:
         resultados = []
-        if not os.path.exists(UPLOADS_LOCAL):
+        if not os.path.exists(STORAGE_PATH):
             return []
-        for fname in os.listdir(UPLOADS_LOCAL):
+        for fname in os.listdir(STORAGE_PATH):
             if not fname.endswith('.meta.json'):
                 continue
-            with open(os.path.join(UPLOADS_LOCAL, fname), encoding='utf-8') as f:
+            with open(os.path.join(STORAGE_PATH, fname), encoding='utf-8') as f:
                 meta = json.load(f)
             uploaded_at = meta.get('uploaded_at', '')
             try:
@@ -217,7 +212,7 @@ def download_blob(blob_name):
         container = get_container_client()
         return container.get_blob_client(blob_name).download_blob().readall()
     else:
-        safe_path = os.path.join(UPLOADS_LOCAL, blob_name.replace('/', '_'))
+        safe_path = os.path.join(STORAGE_PATH, blob_name.replace('/', '_'))
         with open(safe_path, 'rb') as f:
             return f.read()
 
@@ -304,6 +299,7 @@ def parse_document(text):
 
 @app.route('/login')
 def login_page():
+    # Si ya está logueado, redirigir según rol
     if session.get('user'):
         return redirect(url_for('admin_page') if is_admin_user() else url_for('upload_page'))
     with open(os.path.join(os.path.dirname(__file__), 'templates', 'login.html'), encoding='utf-8') as f:
@@ -325,11 +321,7 @@ def auth_login():
 
 @app.route('/auth/callback')
 def auth_callback():
-    state_recibido = request.args.get('state')
-    state_sesion   = session.get('auth_state')
-
-    if state_recibido != state_sesion:
-        app.logger.warning(f'State mismatch: recibido={state_recibido} sesion={state_sesion}')
+    if request.args.get('state') != session.get('auth_state'):
         return redirect(url_for('login_page'))
 
     code = request.args.get('code')
@@ -344,9 +336,9 @@ def auth_callback():
     )
 
     if 'error' in result:
-        app.logger.error(f'Token error: {result.get("error")} — {result.get("error_description")}')
         return redirect(url_for('login_page'))
 
+    # Obtener info del usuario
     access_token = result.get('access_token')
     user_info    = http_requests.get(
         'https://graph.microsoft.com/v1.0/me',
@@ -354,6 +346,7 @@ def auth_callback():
         timeout=10
     ).json()
 
+    # Obtener grupos para determinar rol
     groups = get_user_groups(access_token)
 
     session['user'] = {
@@ -364,8 +357,7 @@ def auth_callback():
     session['groups']       = groups
     session['access_token'] = access_token
 
-    app.logger.info(f'Login exitoso: {session["user"]["email"]} | admin={is_admin_user()}')
-
+    # Redirigir según rol
     if is_admin_user():
         return redirect(url_for('admin_page'))
     return redirect(url_for('upload_page'))
@@ -394,7 +386,8 @@ def upload_page():
     with open(os.path.join(os.path.dirname(__file__), 'templates', 'upload.html'), encoding='utf-8') as f:
         content = f.read()
     user = session.get('user', {})
-    return content.replace('{{USER_NAME}}', user.get('name', ''))
+    content = content.replace('{{USER_NAME}}', user.get('name', ''))
+    return content
 
 @app.route('/admin')
 @admin_required
@@ -402,7 +395,8 @@ def admin_page():
     with open(os.path.join(os.path.dirname(__file__), 'templates', 'admin.html'), encoding='utf-8') as f:
         content = f.read()
     user = session.get('user', {})
-    return content.replace('{{USER_NAME}}', user.get('name', ''))
+    content = content.replace('{{USER_NAME}}', user.get('name', ''))
+    return content
 
 # ══════════════════════════════════════════════════════════════════════════════
 # API
@@ -479,8 +473,7 @@ def api_preview():
             data       = parse_document(text)
             resultados.append({'blob_name': blob_name, 'archivo': blob_name.split('/')[-1], **data})
         except Exception as e:
-            resultados.append({'blob_name': blob_name, 'archivo': blob_name.split('/')[-1],
-                               'nombre': 'Error', 'importe': str(e), 'tipo': 'error'})
+            resultados.append({'blob_name': blob_name, 'archivo': blob_name.split('/')[-1], 'nombre': 'Error', 'importe': str(e), 'tipo': 'error'})
     return jsonify(resultados)
 
 @app.route('/api/admin/buscar-legajos-bulk', methods=['POST'])
@@ -504,7 +497,8 @@ def api_generar_txt():
     importes_override = request.json.get('importes_override', {})
     filas             = request.json.get('filas', [])
 
-    lines = ["Legajo SAP\tCC-N\t Importe \tCantidad\tFecha\t\t"]
+    lines = []
+    lines.append("Legajo SAP\tCC-N\t Importe \tCantidad\tFecha\t\t")
 
     for fila in filas:
         legajo = fila.get('legajo', '')
@@ -525,5 +519,5 @@ def api_generar_txt():
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 8000))
-    app.logger.info(f'Servidor corriendo en http://localhost:{port}')
-    app.run(debug=os.getenv('FLASK_ENV') != 'production', port=port)
+    print(f"Servidor corriendo en http://localhost:{port}")
+    app.run(debug=True, port=port)
