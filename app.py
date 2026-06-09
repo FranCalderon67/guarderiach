@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, send_file, redirect, url_for, session
 from flask_cors import CORS
+from flask_session import Session
 from azure.storage.blob import BlobServiceClient, ContentSettings
 from dotenv import load_dotenv
 import pdfplumber
@@ -16,15 +17,22 @@ load_dotenv()
 
 app = Flask(__name__, static_folder='static')
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# Sesiones server-side en /home para que persistan en Azure App Service
+app.config['SESSION_TYPE']            = 'filesystem'
+app.config['SESSION_FILE_DIR']        = '/home/flask_sessions'
+app.config['SESSION_PERMANENT']       = False
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE']   = os.getenv('FLASK_ENV') == 'production'
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+Session(app)
+
 CORS(app)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 AZURE_CONNECTION_STRING = os.getenv('AZURE_CONNECTION_STRING', '')
 AZURE_CONTAINER_NAME    = os.getenv('AZURE_CONTAINER_NAME', 'documentos')
-
-# Ruta de almacenamiento: Azure Files montado como carpeta local en producción
-# En desarrollo local usa la carpeta 'uploads/' del proyecto
-STORAGE_PATH = '/capitalhumano' if os.path.exists('/capitalhumano') else os.path.join(os.path.dirname(__file__), 'uploads')
+UPLOADS_LOCAL           = os.path.join(os.path.dirname(__file__), 'uploads')
 
 SAP_TOKEN_URL     = os.getenv('SAP_TOKEN_URL', 'https://distrocuyo-data.authentication.us10.hana.ondemand.com/oauth/token')
 SAP_CLIENT_ID     = os.getenv('SAP_CLIENT_ID', '')
@@ -124,8 +132,7 @@ def buscar_legajo_por_dni(dni):
 
 # ── Azure Blob ────────────────────────────────────────────────────────────────
 def azure_configurado():
-    # Con Azure Files montado como carpeta local, siempre usamos filesystem
-    return False
+    return AZURE_CONNECTION_STRING and 'TU_ACCOUNT' not in AZURE_CONNECTION_STRING
 
 def get_container_client():
     client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
@@ -146,8 +153,8 @@ def upload_to_azure(file_bytes, blob_name, original_name, uploader_name, dni):
             overwrite=True
         )
     else:
-        os.makedirs(STORAGE_PATH, exist_ok=True)
-        safe_path = os.path.join(STORAGE_PATH, blob_name.replace('/', '_'))
+        os.makedirs(UPLOADS_LOCAL, exist_ok=True)
+        safe_path = os.path.join(UPLOADS_LOCAL, blob_name.replace('/', '_'))
         with open(safe_path, 'wb') as f:
             f.write(file_bytes)
         with open(safe_path + '.meta.json', 'w', encoding='utf-8') as f:
@@ -183,12 +190,12 @@ def list_blobs_by_date(date_from, date_to):
         return sorted(resultados, key=lambda x: x['uploaded_at'], reverse=True)
     else:
         resultados = []
-        if not os.path.exists(STORAGE_PATH):
+        if not os.path.exists(UPLOADS_LOCAL):
             return []
-        for fname in os.listdir(STORAGE_PATH):
+        for fname in os.listdir(UPLOADS_LOCAL):
             if not fname.endswith('.meta.json'):
                 continue
-            with open(os.path.join(STORAGE_PATH, fname), encoding='utf-8') as f:
+            with open(os.path.join(UPLOADS_LOCAL, fname), encoding='utf-8') as f:
                 meta = json.load(f)
             uploaded_at = meta.get('uploaded_at', '')
             try:
@@ -212,7 +219,7 @@ def download_blob(blob_name):
         container = get_container_client()
         return container.get_blob_client(blob_name).download_blob().readall()
     else:
-        safe_path = os.path.join(STORAGE_PATH, blob_name.replace('/', '_'))
+        safe_path = os.path.join(UPLOADS_LOCAL, blob_name.replace('/', '_'))
         with open(safe_path, 'rb') as f:
             return f.read()
 
