@@ -32,7 +32,10 @@ CORS(app)
 # ── Config ────────────────────────────────────────────────────────────────────
 AZURE_CONNECTION_STRING = os.getenv('AZURE_CONNECTION_STRING', '')
 AZURE_CONTAINER_NAME    = os.getenv('AZURE_CONTAINER_NAME', 'documentos')
-UPLOADS_LOCAL           = os.path.join(os.path.dirname(__file__), 'uploads')
+
+# Ruta de almacenamiento: Azure Files montado como carpeta local en producción
+# En desarrollo local usa la carpeta 'uploads/' del proyecto
+STORAGE_PATH = '/capitalhumano' if os.path.exists('/capitalhumano') else os.path.join(os.path.dirname(__file__), 'uploads')
 
 SAP_TOKEN_URL     = os.getenv('SAP_TOKEN_URL', 'https://distrocuyo-data.authentication.us10.hana.ondemand.com/oauth/token')
 SAP_CLIENT_ID     = os.getenv('SAP_CLIENT_ID', '')
@@ -75,7 +78,8 @@ def is_admin_user():
     if not session.get('user'):
         return False
     if not ENTRA_ADMIN_GROUP_ID:
-        return session['user'].get('role') == 'admin'
+        # Sin grupo configurado en .env, todos los usuarios logueados son admin
+        return True
     return ENTRA_ADMIN_GROUP_ID in session.get('groups', [])
 
 def login_required(f):
@@ -132,7 +136,8 @@ def buscar_legajo_por_dni(dni):
 
 # ── Azure Blob ────────────────────────────────────────────────────────────────
 def azure_configurado():
-    return AZURE_CONNECTION_STRING and 'TU_ACCOUNT' not in AZURE_CONNECTION_STRING
+    # Con Azure Files montado como carpeta local (/capitalhumano), no usamos el SDK de Blob Storage
+    return False
 
 def get_container_client():
     client = BlobServiceClient.from_connection_string(AZURE_CONNECTION_STRING)
@@ -153,8 +158,8 @@ def upload_to_azure(file_bytes, blob_name, original_name, uploader_name, dni):
             overwrite=True
         )
     else:
-        os.makedirs(UPLOADS_LOCAL, exist_ok=True)
-        safe_path = os.path.join(UPLOADS_LOCAL, blob_name.replace('/', '_'))
+        os.makedirs(STORAGE_PATH, exist_ok=True)
+        safe_path = os.path.join(STORAGE_PATH, blob_name.replace('/', '_'))
         with open(safe_path, 'wb') as f:
             f.write(file_bytes)
         with open(safe_path + '.meta.json', 'w', encoding='utf-8') as f:
@@ -190,12 +195,12 @@ def list_blobs_by_date(date_from, date_to):
         return sorted(resultados, key=lambda x: x['uploaded_at'], reverse=True)
     else:
         resultados = []
-        if not os.path.exists(UPLOADS_LOCAL):
+        if not os.path.exists(STORAGE_PATH):
             return []
-        for fname in os.listdir(UPLOADS_LOCAL):
+        for fname in os.listdir(STORAGE_PATH):
             if not fname.endswith('.meta.json'):
                 continue
-            with open(os.path.join(UPLOADS_LOCAL, fname), encoding='utf-8') as f:
+            with open(os.path.join(STORAGE_PATH, fname), encoding='utf-8') as f:
                 meta = json.load(f)
             uploaded_at = meta.get('uploaded_at', '')
             try:
@@ -219,7 +224,7 @@ def download_blob(blob_name):
         container = get_container_client()
         return container.get_blob_client(blob_name).download_blob().readall()
     else:
-        safe_path = os.path.join(UPLOADS_LOCAL, blob_name.replace('/', '_'))
+        safe_path = os.path.join(STORAGE_PATH, blob_name.replace('/', '_'))
         with open(safe_path, 'rb') as f:
             return f.read()
 
