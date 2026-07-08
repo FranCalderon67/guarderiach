@@ -5,13 +5,20 @@ services:
       dockerfile: Dockerfile
     container_name: guarderia-facturas-container
     ports:
-      - "8083:8000"  # <─── Accederás por el puerto 8083 desde tu Windows
+      - "8083:8000"
     volumes:
-      - /opt/guarderia/facturas:/capitalhumano  # <─── PERSISTENCIA: Real en Ubuntu -> Interno en Docker
+      - /opt/guarderia/facturas:/capitalhumano
     environment:
       - FLASK_ENV=production
-      # Dejamos declaradas las variables de Entra ID y Azure que el dev use en su .env
       - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
       - AZURE_CONNECTION_STRING=${AZURE_CONNECTION_STRING}
       - AZURE_CONTAINER_NAME=${AZURE_CONTAINER_NAME}
+      - SAP_CLIENT_ID=${SAP_CLIENT_ID}
+      - SAP_CLIENT_SECRET=${SAP_CLIENT_SECRET}
+      - SAP_TOKEN_URL=${SAP_TOKEN_URL}
+      - ENTRA_CLIENT_ID=${ENTRA_CLIENT_ID}
+      - ENTRA_TENANT_ID=${ENTRA_TENANT_ID}
+      - ENTRA_CLIENT_SECRET=${ENTRA_CLIENT_SECRET}
+      - ENTRA_REDIRECT_URI=${ENTRA_REDIRECT_URI}
+      - ENTRA_ADMIN_GROUP_ID=${ENTRA_ADMIN_GROUP_ID}
     restart: unless-stopped
