@@ -9,7 +9,8 @@ services:
     volumes:
       - /opt/guarderia/facturas:/capitalhumano
     environment:
-      - FLASK_ENV=production
+      - FLASK_ENV=development  # <─── Cambiado a development para permitir cookies sin HTTPS localmente
+      - OAUTHLIB_INSECURE_TRANSPORT=1  # <─── ¡AGREGADO ACÁ! Permite flujos OAuth por HTTP
       - FLASK_SECRET_KEY=${FLASK_SECRET_KEY}
       - AZURE_CONNECTION_STRING=${AZURE_CONNECTION_STRING}
       - AZURE_CONTAINER_NAME=${AZURE_CONTAINER_NAME}
