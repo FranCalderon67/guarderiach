@@ -33,9 +33,16 @@ CORS(app)
 AZURE_CONNECTION_STRING = os.getenv('AZURE_CONNECTION_STRING', '')
 AZURE_CONTAINER_NAME    = os.getenv('AZURE_CONTAINER_NAME', 'documentos')
 
-# Ruta de almacenamiento: Azure Files montado como carpeta local en producción
-# En desarrollo local usa la carpeta 'uploads/' del proyecto
-STORAGE_PATH = '/capitalhumano' if os.path.exists('/capitalhumano') else os.path.join(os.path.dirname(__file__), 'uploads')
+# Ruta de almacenamiento — orden de prioridad:
+# 1. /opt/guarderia/facturas  → Docker
+# 2. /capitalhumano           → Azure Files montado
+# 3. uploads/                 → desarrollo local
+if os.path.exists('/opt/guarderia/facturas'):
+    STORAGE_PATH = '/opt/guarderia/facturas'
+elif os.path.exists('/capitalhumano'):
+    STORAGE_PATH = '/capitalhumano'
+else:
+    STORAGE_PATH = os.path.join(os.path.dirname(__file__), 'uploads')
 
 SAP_TOKEN_URL     = os.getenv('SAP_TOKEN_URL', 'https://distrocuyo-data.authentication.us10.hana.ondemand.com/oauth/token')
 SAP_CLIENT_ID     = os.getenv('SAP_CLIENT_ID', '')
