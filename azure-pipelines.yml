@@ -1,13 +1,13 @@
 trigger:
   - main
 
-# Usamos tu máquina local como agente
+# Definimos el agente de Windows (tu computadora local)
 pool:
   name: 'Default'
 
 variables:
-  azureServiceConnection: 'scgic' # Asegúrate de que esta conexión tenga permisos sobre el nuevo App Service
-  webAppName: 'distrocuyo-gic'     # Nombre de tu App Service en Azure
+  azureServiceConnection: 'scgic' # Nombre de tu conexión de Azure en DevOps
+  webAppName: 'appguarderia-distrocuyo'     # Nombre del App Service
   nodeVersion: '18.x'
 
 stages:
@@ -16,21 +16,34 @@ stages:
   jobs:
   - job: BuildJob
     steps:
-    # 1. Intentar garantizar la versión de Node.js (requiere que el agente local lo permita, si no, usa el Node global de tu PC)
+    # 1. Configurar/Garantizar la versión de Node.js en la máquina
     - task: NodeTool@0
       inputs:
         versionSpec: $(nodeVersion)
       displayName: 'Configurar Node.js $(nodeVersion)'
 
-    # 2. Instalar dependencias del proyecto raíz y compilar (si aplica)
+    # 2. Instalar dependencias en la raíz, backend y frontend (usando comandos de Windows cmd)
     - script: |
-        npm ci
-        # Si necesitas compilar el frontend o backend, descomenta las siguientes líneas según corresponda:
-        # cd frontend && npm ci && npm run build && cd ..
-        # cd backend && npm ci && cd ..
+        echo "=== Instalando dependencias de la raiz ==="
+        npm install
+        
+        echo "=== Instalando dependencias del Backend ==="
+        if exist backend (
+            cd backend
+            npm install
+            cd ..
+        )
+        
+        echo "=== Instalando dependencias y compilando Frontend ==="
+        if exist frontend (
+            cd frontend
+            npm install
+            npm run build --if-present
+            cd ..
+        )
       displayName: 'Instalar dependencias y Compilar'
 
-    # 3. Empaquetar todo el directorio de trabajo para producción
+    # 3. Empaquetar todo el proyecto en un archivo ZIP
     - task: ArchiveFiles@2
       displayName: 'Empaquetar ZIP'
       inputs:
@@ -40,7 +53,7 @@ stages:
         archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
         replaceExistingArchive: true
 
-    # 4. Publicar el artefacto en Azure Pipelines
+    # 4. Publicar el archivo empaquetado como artefacto de Azure DevOps
     - task: PublishBuildArtifacts@1
       displayName: 'Publicar Artefacto'
       inputs:
@@ -58,7 +71,7 @@ stages:
       runOnce:
         deploy:
           steps:
-          # 5. Desplegar el ZIP al Azure App Service de Linux corriendo Node 18
+          # 5. Desplegar el artefacto ZIP en Azure App Service Linux configurado con Node 18
           - task: AzureWebApp@1
             displayName: 'Desplegar en App Service Linux (Node)'
             inputs:
@@ -67,5 +80,6 @@ stages:
               appName: $(webAppName)
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               runtimeStack: 'NODE|18-lts'
-              # Si tu archivo de entrada está dentro de backend (ej: backend/server.js), puedes indicarlo aquí:
+              # NOTA: Si el archivo de inicio de tu backend está en "backend/server.js" o "backend/index.js",
+              # puedes descomentar la siguiente línea para indicárselo a Azure:
               # startUpCommand: 'node backend/server.js'
