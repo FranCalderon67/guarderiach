@@ -1,31 +1,36 @@
 trigger:
-- main
+  - main
 
-# Definimos el agente a nivel global para evitar errores de sintaxis
+# Usamos tu máquina local como agente
 pool:
   name: 'Default'
 
 variables:
-  azureServiceConnection: 'sc-appguarderia'
-  webAppName: 'appguarderia-distrocuyo'
-  pythonVersion: '3.12'
+  azureServiceConnection: 'scgic' # Asegúrate de que esta conexión tenga permisos sobre el nuevo App Service
+  webAppName: 'distrocuyo-gic'     # Nombre de tu App Service en Azure
+  nodeVersion: '18.x'
 
 stages:
 - stage: Build
-  displayName: 'Fase de Construccion'
+  displayName: 'Fase de Construcción'
   jobs:
   - job: BuildJob
     steps:
-    - task: UsePythonVersion@0
+    # 1. Intentar garantizar la versión de Node.js (requiere que el agente local lo permita, si no, usa el Node global de tu PC)
+    - task: NodeTool@0
       inputs:
-        versionSpec: $(pythonVersion)
-      displayName: 'Configurar Python $(pythonVersion)'
+        versionSpec: $(nodeVersion)
+      displayName: 'Configurar Node.js $(nodeVersion)'
 
+    # 2. Instalar dependencias del proyecto raíz y compilar (si aplica)
     - script: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-      displayName: 'Validar dependencias'
+        npm ci
+        # Si necesitas compilar el frontend o backend, descomenta las siguientes líneas según corresponda:
+        # cd frontend && npm ci && npm run build && cd ..
+        # cd backend && npm ci && cd ..
+      displayName: 'Instalar dependencias y Compilar'
 
+    # 3. Empaquetar todo el directorio de trabajo para producción
     - task: ArchiveFiles@2
       displayName: 'Empaquetar ZIP'
       inputs:
@@ -35,6 +40,7 @@ stages:
         archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
         replaceExistingArchive: true
 
+    # 4. Publicar el artefacto en Azure Pipelines
     - task: PublishBuildArtifacts@1
       displayName: 'Publicar Artefacto'
       inputs:
@@ -52,12 +58,14 @@ stages:
       runOnce:
         deploy:
           steps:
+          # 5. Desplegar el ZIP al Azure App Service de Linux corriendo Node 18
           - task: AzureWebApp@1
-            displayName: 'Desplegar en App Service Linux'
+            displayName: 'Desplegar en App Service Linux (Node)'
             inputs:
               azureSubscription: $(azureServiceConnection)
               appType: 'webAppLinux'
               appName: $(webAppName)
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
-              runtimeStack: 'PYTHON|$(pythonVersion)'
-              startUpCommand: 'sh startup.sh'
+              runtimeStack: 'NODE|18-lts'
+              # Si tu archivo de entrada está dentro de backend (ej: backend/server.js), puedes indicarlo aquí:
+              # startUpCommand: 'node backend/server.js'
