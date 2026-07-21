@@ -117,6 +117,11 @@
           </div>
         </div>
 
+        <div>
+          <div class="label" style="margin-bottom:10px">Fecha del período (se aplica a todas las filas)</div>
+          <input type="text" id="fecha-global" placeholder="Ej: 28.02.2026" style="max-width:200px">
+        </div>
+
       </div>
     </div>
 
@@ -356,9 +361,11 @@
     });
 
     try {
-      const filasConDni = previewData.map(row => {
-        const info = archivosData.find(a => a.blob_name === row.blob_name);
-        return { ...row, dni: info?.dni || '' };
+      const fechaGlobal = document.getElementById('fecha-global')?.value || '';
+      const filasConDni = previewData.map((row, i) => {
+        const info   = archivosData.find(a => a.blob_name === row.blob_name);
+        const legajo = document.getElementById(`legajo-${i}`)?.value || '';
+        return { ...row, dni: info?.dni || '', legajo, fecha: fechaGlobal };
       });
       const res = await fetch('/api/admin/generar-txt', {
         method: 'POST',
