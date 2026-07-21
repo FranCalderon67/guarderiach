@@ -124,7 +124,10 @@
     <div class="card" id="preview-card" style="display:none">
       <div class="card-header">
         <span class="label">04 / Preview y descarga</span>
-        <button class="btn btn-green" id="btn-download" onclick="descargar()">↓ Descargar .txt</button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn btn-ghost" id="btn-sap" onclick="autocompletarLegajos()">⚡ Autocompletar legajos (SAP)</button>
+          <button class="btn btn-green" id="btn-download" onclick="descargar()">↓ Descargar .txt</button>
+        </div>
       </div>
       <div class="table-wrap">
         <table>
@@ -369,6 +372,49 @@
     } finally {
       btn.disabled  = false;
       btn.innerHTML = '↓ Descargar .txt';
+    }
+  }
+
+  // ── Autocompletar legajos desde SAP ───────────────────────────────
+  async function autocompletarLegajos() {
+    const btn = document.getElementById('btn-sap');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span> Consultando SAP…';
+    limpiarAlertas();
+
+    const items = previewData.map(row => {
+      const info = archivosData.find(a => a.blob_name === row.blob_name);
+      return { blob_name: row.blob_name, dni: info?.dni || '' };
+    });
+
+    try {
+      const res  = await fetch('/api/admin/buscar-legajos-bulk', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ items })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Error al consultar SAP.');
+
+      const legajos = data.legajos;
+      let encontrados = 0;
+      previewData.forEach((row, i) => {
+        const legajo = legajos[row.blob_name];
+        const input  = document.getElementById(`legajo-${i}`);
+        if (input && legajo) {
+          input.value = legajo;
+          input.style.borderColor = 'var(--green)';
+          encontrados++;
+        } else if (input) {
+          input.style.borderColor = 'var(--red)';
+        }
+      });
+      mostrarSuccess(`✓ ${encontrados} legajo(s) completado(s) desde SAP.`);
+    } catch (err) {
+      mostrarError(err.message);
+    } finally {
+      btn.disabled  = false;
+      btn.innerHTML = '&#x26A1; Autocompletar legajos (SAP)';
     }
   }
 
