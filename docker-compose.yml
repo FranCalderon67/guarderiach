@@ -7,7 +7,7 @@ services:
     ports:
       - "8083:8000"
     volumes:
-      - /opt/guarderia/facturas:/capitalhumano
+      - /opt/guarderia/facturas:/opt/guarderia/facturas
     environment:
       - FLASK_ENV=development  # <─── Cambiado a development para permitir cookies sin HTTPS localmente
       - OAUTHLIB_INSECURE_TRANSPORT=1  # <─── ¡AGREGADO ACÁ! Permite flujos OAuth por HTTP
