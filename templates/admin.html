@@ -124,10 +124,7 @@
     <div class="card" id="preview-card" style="display:none">
       <div class="card-header">
         <span class="label">04 / Preview y descarga</span>
-        <div style="display:flex;gap:10px;flex-wrap:wrap">
-          <button class="btn btn-ghost" id="btn-sap" onclick="autocompletarLegajos()">⚡ Autocompletar legajos (SAP)</button>
-          <button class="btn btn-green" id="btn-download" onclick="descargar()">↓ Descargar .txt</button>
-        </div>
+        <button class="btn btn-green" id="btn-download" onclick="descargar()">↓ Descargar .txt</button>
       </div>
       <div class="table-wrap">
         <table>
@@ -294,9 +291,13 @@
     const campos = getCampos();
     const thead  = document.getElementById('preview-thead');
     const tbody  = document.getElementById('preview-tbody');
+    const inputStyle = "background:var(--bg);border:1.5px solid var(--border);border-radius:var(--radius-sm);padding:6px 8px;color:var(--ink);font-family:var(--font-mono);font-size:12px;outline:none;";
 
+    // Header sincronizado con las filas
     let hdr = '<tr><th>Archivo</th><th>Subido por</th>';
-   if (campos.includes('dni'))     hdr += '<th>DNI</th>';
+    if (campos.includes('nombre'))  hdr += '<th>Nombre y apellido</th>';
+    if (campos.includes('dni'))     hdr += '<th>DNI</th>';
+    hdr += '<th>N° de legajo</th>';
     if (campos.includes('importe')) hdr += '<th>Cantidad</th><th>Importe total</th>';
     hdr += '<th></th></tr>';
     thead.innerHTML = hdr;
@@ -307,21 +308,27 @@
       let tr = `<tr>`;
       tr += `<td class="mono">${row.archivo}</td>`;
       tr += `<td style="font-weight:600">${uploader}</td>`;
+
       if (campos.includes('nombre')) {
         const ok = row.nombre !== 'No encontrado';
         tr += `<td class="${ok ? 'tag-green' : 'tag-muted'}">${row.nombre}</td>`;
       }
+
       if (campos.includes('dni')) {
-        const archivoInfo = archivosData.find(a => a.blob_name === row.blob_name);
         const dni = archivoInfo?.dni || '—';
         tr += `<td class="mono">${dni}</td>`;
       }
+
+      // N° de legajo — siempre visible, autocompletable desde SAP
+      tr += `<td><input type="text" id="legajo-${i}" placeholder="—" style="width:90px;${inputStyle}"></td>`;
+
       if (campos.includes('importe')) {
         const importeFinal = aplicarTope(row.importe);
         const ok = importeFinal !== 'No encontrado';
         tr += `<td><input type="number" min="1" max="99" value="1" id="cant-${i}" onchange="recalcularImporte(${i})" class="preview-input" style="width:60px;text-align:center"></td>`;
         tr += `<td class="${ok ? 'tag-green' : 'tag-muted'}" id="imp-cell-${i}" data-base="${importeFinal}">${importeFinal}</td>`;
       }
+
       tr += `<td><button onclick="eliminarFila(${i})" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:14px;padding:2px 6px;border-radius:4px;transition:color .2s" onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--muted)'">✕</button></td>`;
       tr += '</tr>';
       return tr;
@@ -348,9 +355,11 @@
     });
 
     try {
-      const filasConDni = previewData.map(row => {
-        const info = archivosData.find(a => a.blob_name === row.blob_name);
-        return { ...row, dni: info?.dni || '' };
+      const filasConDni = previewData.map((row, i) => {
+        const info   = archivosData.find(a => a.blob_name === row.blob_name);
+        const legajo = document.getElementById(`legajo-${i}`)?.value || '';
+        const fecha  = '';
+        return { ...row, dni: info?.dni || '', legajo, fecha };
       });
       const res = await fetch('/api/admin/generar-txt', {
         method: 'POST',
@@ -372,49 +381,6 @@
     } finally {
       btn.disabled  = false;
       btn.innerHTML = '↓ Descargar .txt';
-    }
-  }
-
-  // ── Autocompletar legajos desde SAP ───────────────────────────────
-  async function autocompletarLegajos() {
-    const btn = document.getElementById('btn-sap');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span> Consultando SAP…';
-    limpiarAlertas();
-
-    const items = previewData.map(row => {
-      const info = archivosData.find(a => a.blob_name === row.blob_name);
-      return { blob_name: row.blob_name, dni: info?.dni || '' };
-    });
-
-    try {
-      const res  = await fetch('/api/admin/buscar-legajos-bulk', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ items })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Error al consultar SAP.');
-
-      const legajos = data.legajos;
-      let encontrados = 0;
-      previewData.forEach((row, i) => {
-        const legajo = legajos[row.blob_name];
-        const input  = document.getElementById(`legajo-${i}`);
-        if (input && legajo) {
-          input.value = legajo;
-          input.style.borderColor = 'var(--green)';
-          encontrados++;
-        } else if (input) {
-          input.style.borderColor = 'var(--red)';
-        }
-      });
-      mostrarSuccess(`✓ ${encontrados} legajo(s) completado(s) desde SAP.`);
-    } catch (err) {
-      mostrarError(err.message);
-    } finally {
-      btn.disabled  = false;
-      btn.innerHTML = '&#x26A1; Autocompletar legajos (SAP)';
     }
   }
 
