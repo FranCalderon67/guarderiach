@@ -475,7 +475,7 @@ def api_generar_txt():
         lines.append(f"{legajo}\t2412\t {imp} \t\t{fecha}\t\t")
 
     for _ in range(40):
-        lines.append("\t\t\t\t\t\t")
+        lines.append("")
 
     buffer = io.BytesIO("\n".join(lines).encode('utf-8'))
     buffer.seek(0)
