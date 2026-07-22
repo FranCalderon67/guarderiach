@@ -474,7 +474,10 @@ def api_generar_txt():
             imp = ''
         lines.append(f"{legajo}\t2412\t {imp} \t\t{fecha}\t\t")
 
-       buffer = io.BytesIO("\n".join(lines).encode('utf-8'))
+    for _ in range(40):
+        lines.append("\t\t\t\t\t\t")
+
+    buffer = io.BytesIO("\n".join(lines).encode('utf-8'))
     buffer.seek(0)
     return send_file(buffer, mimetype='text/plain', as_attachment=True, download_name='reporte.txt')
 
