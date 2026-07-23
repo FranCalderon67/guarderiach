@@ -23,7 +23,7 @@
 
   <nav class="topbar">
     <a class="distro-logo" href="/">
-      <img src="/static/logo.png" alt="Distrocuyo" onerror="this.outerHTML='<span style=\"font-family:var(--font-display);font-weight:800;color:var(--blue);font-size:18px\">Distrocuyo</span>'">
+      <img src="/static/logo.png" alt="Distrocuyo" onerror="this.outerHTML='<span style=\"font-family:var(--font-display);font-weight:800;color:var(--blue);font-size:18px\">Distrocuyo</span>
     </a>
     <div class="topbar-right">
       <span class="version-tag">Panel Admin</span>
@@ -73,6 +73,7 @@
               <th>Subido por</th>
               <th>Fecha</th>
               <th>Tamaño</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="archivos-tbody"></tbody>
@@ -211,6 +212,7 @@
         <td style="color:var(--text)">${a.uploader}</td>
         <td class="mono">${a.uploaded_at}</td>
         <td class="mono">${a.size_kb} KB</td>
+        <td><button onclick="descargarPDF('${a.blob_name}', '${a.original_name}')" title="Descargar PDF" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:16px;padding:2px 6px;border-radius:4px;transition:color .2s" onmouseover="this.style.color='var(--blue)'" onmouseout="this.style.color='var(--muted)'">⬇</button></td>
       </tr>
     `).join('');
     actualizarSelCount();
@@ -430,6 +432,30 @@
     } finally {
       btn.disabled  = false;
       btn.innerHTML = '&#x26A1; Autocompletar legajos (SAP)';
+    }
+  }
+
+  // ── Descargar PDF individual ──────────────────────────────────────
+  async function descargarPDF(blobName, originalName) {
+    try {
+      const res = await fetch('/api/admin/descargar-pdf', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ blob_name: blobName })
+      });
+      if (!res.ok) {
+        const j = await res.json();
+        throw new Error(j.error || 'Error al descargar.');
+      }
+      const blob   = await res.blob();
+      const url    = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href     = url;
+      anchor.download = originalName;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      mostrarError('Error al descargar: ' + err.message);
     }
   }
 

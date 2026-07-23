@@ -17,6 +17,74 @@
     .success-state p { font-size:14px; color:var(--ink2); margin-bottom:24px; }
     .btn-outline { background:none; border:1.5px solid var(--border); color:var(--ink2); padding:10px 24px; border-radius:var(--radius-sm); font-family:var(--font-display); font-size:14px; font-weight:700; cursor:pointer; transition:all .2s; }
     .btn-outline:hover { border-color:var(--blue); color:var(--blue); }
+
+    /* Preview card */
+    .preview-card {
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius-md);
+      padding: 16px 20px;
+      margin: 0 24px 8px;
+      display: none;
+    }
+    .preview-card.visible { display: block; }
+    .preview-card .preview-title {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+      font-family: var(--font-mono);
+    }
+    .preview-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid var(--border2);
+      font-size: 13px;
+    }
+    .preview-row:last-child { border-bottom: none; }
+    .preview-row .key { color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+    .preview-row .val { font-weight: 600; color: var(--ink); }
+    .preview-row .val.ok  { color: var(--green); }
+    .preview-row .val.err { color: var(--error); }
+
+    .preview-warning {
+      background: #FEF3C7;
+      border: 1px solid #F59E0B;
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      font-size: 12px;
+      color: #92400E;
+      margin: 8px 24px 0;
+      display: none;
+    }
+    .preview-warning.visible { display: block; }
+
+    .preview-loading {
+      text-align: center;
+      padding: 16px;
+      font-size: 13px;
+      color: var(--muted);
+      display: none;
+    }
+    .preview-loading.visible { display: block; }
+
+    .confirm-bar {
+      background: #FEF3C7;
+      border-top: 1px solid #F59E0B;
+      padding: 12px 24px;
+      font-size: 13px;
+      color: #92400E;
+      display: none;
+      align-items: center;
+      gap: 12px;
+    }
+    .confirm-bar.visible { display: flex; }
+    .confirm-bar label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+    .confirm-bar input[type="checkbox"] { accent-color: var(--blue); width: 16px; height: 16px; }
   </style>
 </head>
 <body>
@@ -25,7 +93,7 @@
 
   <nav class="topbar">
     <a class="distro-logo" href="/">
-      <img src="/static/logo.png" alt="Distrocuyo" onerror="this.outerHTML='<span style=\"font-family:var(--font-display);font-weight:800;color:var(--blue);font-size:18px\">Distrocuyo</span>'">
+      <img src="/static/logo.png" alt="Distrocuyo" onerror="this.outerHTML='<span style=\"font-family:var(--font-display);font-weight:800;color:var(--blue);font-size:18px\">Distrocuyo</span>
     </a>
     <div class="topbar-right">
       <span class="username">{{USER_NAME}}</span>
@@ -39,7 +107,7 @@
       <div class="page-header anim-down">
         <div class="page-eyebrow">Gestión Documental</div>
         <h1>Presentá tu documentación</h1>
-        <p>Subí tus comprobantes del mes de forma simple y segura.</p>
+        <p>Subí tu comprobante del mes de forma simple y segura.</p>
       </div>
 
       <div class="card anim-up anim-delay-1" id="form-card">
@@ -55,18 +123,48 @@
 
         <div class="dropzone" id="dropzone" onclick="document.getElementById('file-input').click()">
           <div class="dz-icon">📄</div>
-          <p>Arrastrá tus PDFs aquí</p>
-          <small>o hacé clic para seleccionar · solo archivos PDF</small>
+          <p>Seleccioná tu PDF aquí</p>
+          <small>o hacé clic para seleccionar · solo un archivo PDF</small>
         </div>
         <input type="file" id="file-input" accept="application/pdf" style="display:none">
 
         <div class="file-list" id="file-list"></div>
 
+        <!-- Vista previa -->
+        <div class="preview-loading" id="preview-loading">
+          <span class="spinner spinner-dark" style="display:inline-block;margin-right:8px"></span>
+          Leyendo documento…
+        </div>
+
+        <div class="preview-card" id="preview-card">
+          <div class="preview-title">Vista previa del documento</div>
+          <div class="preview-row">
+            <span class="key">Tipo de documento</span>
+            <span class="val" id="prev-tipo">—</span>
+          </div>
+          <div class="preview-row">
+            <span class="key">Nombre detectado</span>
+            <span class="val" id="prev-nombre">—</span>
+          </div>
+          <div class="preview-row">
+            <span class="key">Importe total</span>
+            <span class="val" id="prev-importe">—</span>
+          </div>
+        </div>
+
+        <!-- Barra de confirmación si hay datos no encontrados -->
+        <div class="confirm-bar" id="confirm-bar">
+          <label>
+            <input type="checkbox" id="confirm-check" onchange="actualizarBtn()">
+            Entiendo que no se pudieron leer todos los datos y quiero enviar igual
+          </label>
+        </div>
+
         <div class="actions">
           <div class="alert alert-error"   id="alert-error"></div>
           <div class="alert alert-success" id="alert-success"></div>
           <button class="btn btn-primary btn-full btn-lg" id="btn-subir" onclick="subir()" disabled>
-            Enviar documentos
+            Enviar documento
           </button>
         </div>
 
@@ -75,9 +173,9 @@
       <div class="card success-state anim-up" id="success-card">
         <div class="card-body" style="text-align:center;padding:48px 28px">
           <div class="check">✅</div>
-          <h2 style="font-family:var(--font-display);font-size:26px;font-weight:800;color:var(--blue);margin-bottom:8px">¡Documentos enviados!</h2>
-          <p id="success-msg" style="font-size:14px;color:var(--ink2);margin-bottom:24px">Tus archivos fueron recibidos correctamente.</p>
-          <button class="btn-outline" onclick="reiniciar()">Subir más archivos</button>
+          <h2 style="font-family:var(--font-display);font-size:26px;font-weight:800;color:var(--blue);margin-bottom:8px">¡Documento enviado!</h2>
+          <p id="success-msg" style="font-size:14px;color:var(--ink2);margin-bottom:24px">Tu archivo fue recibido correctamente.</p>
+          <button class="btn-outline" onclick="reiniciar()">Subir otro documento</button>
         </div>
       </div>
 
@@ -85,38 +183,140 @@
   </div>
 
 <script>
-  let archivos = [];
+  let archivo      = null;
+  let previewOk    = false;
+  let hayProblemas = false;
+
   const dropzone  = document.getElementById('dropzone');
   const fileInput = document.getElementById('file-input');
 
   dropzone.addEventListener('dragover',  e => { e.preventDefault(); dropzone.classList.add('dragover'); });
   dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-  dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('dragover'); agregarArchivos(e.dataTransfer.files); });
-  fileInput.addEventListener('change', e => agregarArchivos(e.target.files));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f) seleccionarArchivo(f);
+  });
+  fileInput.addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (f) seleccionarArchivo(f);
+  });
 
-  function agregarArchivos(files) {
-    for (const f of files) {
-      if (f.type !== 'application/pdf') continue;
-      if (archivos.find(a => a.name === f.name)) continue;
-      archivos.push(f);
+  function seleccionarArchivo(f) {
+    if (f.type !== 'application/pdf') {
+      mostrarError('Solo se aceptan archivos PDF.');
+      return;
     }
-    renderFileList(); actualizarBtn();
+    archivo = f;
+    renderFileList();
+    ocultarPreview();
+    actualizarBtn();
+    cargarPreview();
   }
+
   function renderFileList() {
-    document.getElementById('file-list').innerHTML = archivos.map((f, i) => `
+    document.getElementById('file-list').innerHTML = archivo ? `
       <div class="file-item">
         <span>📄</span>
-        <span class="fname">${f.name}</span>
-        <span class="fsize">${(f.size/1024).toFixed(0)} KB</span>
-        <button class="frem" onclick="eliminar(${i})">✕</button>
-      </div>`).join('');
+        <span class="fname">${archivo.name}</span>
+        <span class="fsize">${(archivo.size/1024).toFixed(0)} KB</span>
+        <button class="frem" onclick="eliminar()">✕</button>
+      </div>` : '';
   }
-  function eliminar(i) { archivos.splice(i, 1); renderFileList(); actualizarBtn(); }
+
+  function eliminar() {
+    archivo = null;
+    fileInput.value = '';
+    renderFileList();
+    ocultarPreview();
+    actualizarBtn();
+  }
+
+  function ocultarPreview() {
+    document.getElementById('preview-card').classList.remove('visible');
+    document.getElementById('preview-loading').classList.remove('visible');
+    document.getElementById('confirm-bar').classList.remove('visible');
+    document.getElementById('confirm-check').checked = false;
+    previewOk    = false;
+    hayProblemas = false;
+  }
+
+  async function cargarPreview() {
+    if (!archivo) return;
+
+    document.getElementById('preview-loading').classList.add('visible');
+    document.getElementById('preview-card').classList.remove('visible');
+    document.getElementById('confirm-bar').classList.remove('visible');
+
+    try {
+      const form = new FormData();
+      form.append('pdfs', archivo);
+
+      const res  = await fetch('/api/preview-usuario', { method: 'POST', body: form });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Error al leer el documento.');
+
+      // Tipos legibles
+      const tipoLabel = {
+        'factura_arca':    'Factura C',
+        'factura_apdes':   'Factura C (Colegio)',
+        'recibo_colegio':  'Recibo C',
+        'recibo':          'Recibo de sueldo',
+        'desconocido':     'Tipo no reconocido',
+      };
+
+      const tipo    = tipoLabel[data.tipo] || data.tipo;
+      const nombre  = data.nombre;
+      const importe = data.importe;
+
+      hayProblemas = nombre === 'No encontrado' || importe === 'No encontrado' || data.tipo === 'desconocido';
+
+      // Mostrar preview
+      const elTipo    = document.getElementById('prev-tipo');
+      const elNombre  = document.getElementById('prev-nombre');
+      const elImporte = document.getElementById('prev-importe');
+
+      elTipo.textContent    = tipo;
+      elTipo.className      = `val ${data.tipo === 'desconocido' ? 'err' : 'ok'}`;
+
+      elNombre.textContent  = nombre;
+      elNombre.className    = `val ${nombre === 'No encontrado' ? 'err' : 'ok'}`;
+
+      elImporte.textContent = importe;
+      elImporte.className   = `val ${importe === 'No encontrado' ? 'err' : 'ok'}`;
+
+      document.getElementById('preview-card').classList.add('visible');
+
+      if (hayProblemas) {
+        document.getElementById('confirm-bar').classList.add('visible');
+      }
+
+      previewOk = true;
+
+    } catch (err) {
+      mostrarError('No se pudo leer el documento: ' + err.message);
+      previewOk = false;
+    } finally {
+      document.getElementById('preview-loading').classList.remove('visible');
+      actualizarBtn();
+    }
+  }
+
   function actualizarBtn() {
     const nombre = document.getElementById('nombre-input').value.trim();
     const dni    = document.getElementById('dni-input').value.trim();
-    document.getElementById('btn-subir').disabled = !nombre || !dni || archivos.length === 0;
+    const confirmado = document.getElementById('confirm-check').checked;
+
+    let habilitado = nombre && dni && archivo && previewOk;
+
+    // Si hay problemas, requiere confirmación
+    if (hayProblemas && !confirmado) habilitado = false;
+
+    document.getElementById('btn-subir').disabled = !habilitado;
   }
+
   async function subir() {
     const nombre = document.getElementById('nombre-input').value.trim();
     const dni    = document.getElementById('dni-input').value.trim();
@@ -124,31 +324,50 @@
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span> Enviando…';
     document.getElementById('alert-error').style.display = 'none';
+
     try {
       const form = new FormData();
-      form.append('nombre', nombre); form.append('dni', dni);
-      archivos.forEach(f => form.append('pdfs', f));
+      form.append('nombre', nombre);
+      form.append('dni', dni);
+      form.append('pdfs', archivo);
+
       const res  = await fetch('/api/upload', { method: 'POST', body: form });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Error al enviar.');
-      document.getElementById('success-msg').textContent = `Se enviaron ${data.subidos.length} archivo(s) correctamente.`;
+
+      document.getElementById('success-msg').textContent = 'Tu archivo fue recibido correctamente.';
       document.getElementById('form-card').style.display    = 'none';
       document.getElementById('success-card').style.display = 'block';
+
     } catch (err) {
-      const el = document.getElementById('alert-error');
-      el.textContent = '⚠ ' + err.message; el.style.display = 'block';
-      btn.disabled = false; btn.innerHTML = 'Enviar documentos';
+      mostrarError(err.message);
+      btn.disabled  = false;
+      btn.innerHTML = 'Enviar documento';
     }
   }
+
   function reiniciar() {
-    archivos = [];
+    archivo = null;
+    fileInput.value = '';
     document.getElementById('nombre-input').value = '';
-    document.getElementById('dni-input').value = '';
+    document.getElementById('dni-input').value    = '';
     document.getElementById('file-list').innerHTML = '';
+    ocultarPreview();
     document.getElementById('form-card').style.display    = 'block';
     document.getElementById('success-card').style.display = 'none';
+    document.getElementById('alert-error').style.display  = 'none';
     actualizarBtn();
   }
+
+  function mostrarError(msg) {
+    const el = document.getElementById('alert-error');
+    el.textContent = '⚠ ' + msg;
+    el.style.display = 'block';
+  }
+
+  // Inputs de nombre y DNI también disparan actualizarBtn
+  document.getElementById('nombre-input').addEventListener('input', actualizarBtn);
+  document.getElementById('dni-input').addEventListener('input', actualizarBtn);
 </script>
 </body>
 </html>

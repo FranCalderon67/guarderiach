@@ -81,6 +81,8 @@ def is_admin_user():
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        if os.getenv('DEV_MODE') == 'true':
+            return f(*args, **kwargs)
         if not session.get('user'):
             return redirect(url_for('login_page'))
         return f(*args, **kwargs)
@@ -89,6 +91,8 @@ def login_required(f):
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
+        if os.getenv('DEV_MODE') == 'true':
+            return f(*args, **kwargs)
         if not session.get('user'):
             return redirect(url_for('login_page'))
         if not is_admin_user():
@@ -324,6 +328,11 @@ def auth_callback():
 
     app.logger.info(f'Login OK: {session["user"]["email"]} | admin: {is_admin_user()}')
 
+    # En modo desarrollo podés elegir la vista manualmente
+    if os.getenv('DEV_MODE') == 'true':
+        return redirect(url_for('dev_menu'))
+
+    # Redirigir según rol
     if is_admin_user():
         return redirect(url_for('admin_page'))
     return redirect(url_for('upload_page'))
@@ -335,6 +344,24 @@ def auth_logout():
         logout_url = f"{ENTRA_AUTHORITY}/oauth2/v2.0/logout?post_logout_redirect_uri={url_for('login_page', _external=True)}"
         return redirect(logout_url)
     return redirect(url_for('login_page'))
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MODO DESARROLLO
+# ══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/dev')
+def dev_menu():
+    if os.getenv('DEV_MODE') != 'true':
+        return redirect(url_for('index'))
+    user = session.get('user', {})
+    return f'''
+    <html><body style="font-family:sans-serif;padding:40px;background:#f4f6fb">
+    <h2 style="color:#1B3B8F">&#x1F6E0; Modo Desarrollo &mdash; {user.get("name", "")}</h2>
+    <p style="color:#6B7280;margin-bottom:24px">Elegí la vista que querés probar:</p>
+    <a href="/admin" style="display:inline-block;margin-right:12px;padding:12px 24px;background:#1B3B8F;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">Panel Admin</a>
+    <a href="/upload" style="display:inline-block;padding:12px 24px;background:#2E8B1A;color:#fff;border-radius:8px;text-decoration:none;font-weight:700">Portal de Carga</a>
+    </body></html>
+    '''
 
 # ══════════════════════════════════════════════════════════════════════════════
 # RUTAS PRINCIPALES
@@ -375,6 +402,23 @@ def api_me():
         'email':    user.get('email', ''),
         'is_admin': is_admin_user()
     })
+
+@app.route('/api/preview-usuario', methods=['POST'])
+@login_required
+def api_preview_usuario():
+    files = request.files.getlist('pdfs')
+    if not files or not files[0].filename:
+        return jsonify({'error': 'No se recibió archivo.'}), 400
+    file = files[0]
+    if not file.filename.endswith('.pdf'):
+        return jsonify({'error': 'Solo se aceptan archivos PDF.'}), 400
+    try:
+        file_bytes = file.read()
+        text = extract_text_from_bytes(file_bytes)
+        data = parse_document(text)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/upload', methods=['POST'])
 @login_required
@@ -440,6 +484,26 @@ def api_preview():
             resultados.append({'blob_name': blob_name, 'archivo': blob_name.split('/')[-1],
                                'nombre': 'Error', 'importe': str(e), 'tipo': 'error'})
     return jsonify(resultados)
+
+@app.route('/api/admin/descargar-pdf', methods=['POST'])
+@admin_required
+def api_descargar_pdf():
+    blob_name = request.json.get('blob_name', '')
+    if not blob_name:
+        return jsonify({'error': 'blob_name requerido.'}), 400
+    try:
+        file_bytes    = download_file(blob_name)
+        original_name = blob_name.split('/')[-1]
+        buffer = io.BytesIO(file_bytes)
+        buffer.seek(0)
+        return send_file(
+            buffer,
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=original_name
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/admin/buscar-legajos-bulk', methods=['POST'])
 @admin_required
